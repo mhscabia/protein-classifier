@@ -1,0 +1,69 @@
+from dataclasses import dataclass
+
+import pandas as pd
+
+from src.domain.entities.hierarchy_graph import HierarchyGraph
+from src.domain.interfaces.data_source import ProteinDataSource
+from src.domain.interfaces.hierarchy_builder import HierarchyBuilder
+from src.domain.interfaces.preprocessor import ProteinPreprocessor
+from src.shared.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+@dataclass
+class PipelineResult:
+    """Resultado do pipeline de preparacao de dados (Modulos 1-3)."""
+
+    proteins: pd.DataFrame
+    hierarchy: HierarchyGraph
+
+
+class PrepareDataPipeline:
+    """Orquestra Modulos 1-3: aquisicao -> pre-processamento -> hierarquia."""
+
+    def __init__(
+        self,
+        data_source: ProteinDataSource,
+        preprocessor: ProteinPreprocessor,
+        hierarchy_builder: HierarchyBuilder,
+    ):
+        self._data_source = data_source
+        self._preprocessor = preprocessor
+        self._hierarchy_builder = hierarchy_builder
+
+    def execute(self, limit: int) -> PipelineResult:
+        # Modulo 1: aquisicao
+        logger.info("=== Modulo 1: Aquisicao de dados ===")
+        raw_data = self._data_source.fetch_proteins(limit)
+
+        if not self._data_source.verify_conformity(raw_data):
+            raise ValueError(
+                "Dados adquiridos nao passaram na verificacao de conformidade"
+            )
+        logger.info("Aquisicao OK: %d proteinas", len(raw_data))
+
+        # Modulo 2: pre-processamento
+        logger.info("=== Modulo 2: Pre-processamento ===")
+        cleaned = self._preprocessor.clean(raw_data)
+        processed = self._preprocessor.normalize(cleaned)
+        logger.info("Pre-processamento OK: %d proteinas", len(processed))
+
+        # Modulo 3: construcao da hierarquia
+        logger.info("=== Modulo 3: Construcao da hierarquia ===")
+        all_go_terms = self._extract_go_terms(processed)
+        hierarchy = self._hierarchy_builder.build(all_go_terms)
+        logger.info("Hierarquia OK: %d nos", len(hierarchy))
+
+        return PipelineResult(proteins=processed, hierarchy=hierarchy)
+
+    @staticmethod
+    def _extract_go_terms(data: pd.DataFrame) -> list[str]:
+        """Extrai todos os termos GO unicos do DataFrame processado."""
+        all_terms: set[str] = set()
+        for terms_str in data["go_terms"]:
+            for term in str(terms_str).split(";"):
+                term = term.strip()
+                if term:
+                    all_terms.add(term)
+        return sorted(all_terms)
