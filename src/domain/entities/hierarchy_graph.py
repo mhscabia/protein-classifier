@@ -33,5 +33,9 @@ class HierarchyGraph:
                     queue.extend(self._nodes[parent_id].parent_ids)
         return ancestors
 
+    def get_all_node_ids(self) -> list[str]:
+        """Retorna todos os IDs de nos no grafo."""
+        return list(self._nodes.keys())
+
     def __len__(self) -> int:
         return len(self._nodes)
