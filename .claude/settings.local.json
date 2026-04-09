@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python main.py)",
+      "Bash(python3 main.py)",
+      "Bash(py main.py)",
+      "Bash(\"C:/Python312/python.exe\" main.py)",
+      "Bash(/c/Windows/py main.py)",
+      "Read(//c/Users/Matheus/AppData/Local/Programs/**)",
+      "Read(//c/Users/Matheus/miniconda3/**)",
+      "Read(//c/Users/Matheus/anaconda3/**)"
+    ]
+  }
+}

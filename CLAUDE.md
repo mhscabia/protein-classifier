@@ -385,7 +385,7 @@ git commit -m "feat: initial project structure — Clean Architecture, domain en
 
 | Data | Atividade | Status |
 |---|---|---|
-| 08/04 | Estrutura, entidades, interfaces | 🔄 Em andamento |
+| 08/04 | Estrutura, entidades, interfaces | ✅ Concluído |
 | 09/04 | Módulo 1 — Aquisição de dados | ⬜ Pendente |
 | 10/04 | Módulo 2 — Pré-processamento | ⬜ Pendente |
 | 11/04 | Módulo 3 — Hierarquia DAG | ⬜ Pendente |
