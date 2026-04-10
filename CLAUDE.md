@@ -389,10 +389,10 @@ git commit -m "feat: initial project structure — Clean Architecture, domain en
 | 09/04 | Módulo 1 — Aquisição de dados | ✅ Concluído |
 | 10/04 | Módulo 2 — Pré-processamento | ✅ Concluído |
 | 11/04 | Módulo 3 — Hierarquia DAG | ✅ Concluído |
-| 12/04 | Integração módulos 1–3 + testes | ⬜ Pendente |
-| 13/04 | Buffer | ⬜ Pendente |
-| 14/04 | Módulo 4 — Treinamento | ⬜ Pendente |
-| 15/04 | Módulo 5 — Avaliação | ⬜ Pendente |
+| 12/04 | Integração módulos 1–3 + testes | ✅ Concluído |
+| 13/04 | Buffer (testes unitários use cases) | ✅ Concluído |
+| 14/04 | Módulo 4 — Treinamento | ✅ Concluído |
+| 15/04 | Módulo 5 — Avaliação | ✅ Concluído |
 | 16/04 | Módulo 6 — Previsão | ⬜ Pendente |
 | 17/04 | Integração completa + teste ponta a ponta | ⬜ Pendente |
 | 18–21/04 | Escrita do documento | ⬜ Pendente |
