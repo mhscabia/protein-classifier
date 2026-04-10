@@ -52,6 +52,11 @@ class PandasPreprocessor(ProteinPreprocessor):
         self._processed_path = Path(self._config["data"]["processed_path"])
         self._scaler: StandardScaler | None = None
 
+    @property
+    def scaler(self) -> StandardScaler | None:
+        """Retorna o scaler ajustado apos normalize(), ou None."""
+        return self._scaler
+
     def clean(self, data: pd.DataFrame) -> pd.DataFrame:
         df = data.copy()
         initial_count = len(df)

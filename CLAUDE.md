@@ -393,7 +393,7 @@ git commit -m "feat: initial project structure — Clean Architecture, domain en
 | 13/04 | Buffer (testes unitários use cases) | ✅ Concluído |
 | 14/04 | Módulo 4 — Treinamento | ✅ Concluído |
 | 15/04 | Módulo 5 — Avaliação | ✅ Concluído |
-| 16/04 | Módulo 6 — Previsão | ⬜ Pendente |
+| 16/04 | Módulo 6 — Previsão | ✅ Concluído |
 | 17/04 | Integração completa + teste ponta a ponta | ⬜ Pendente |
 | 18–21/04 | Escrita do documento | ⬜ Pendente |
 | **22/04** | **ENTREGA Projeto Físico Revisado** | ⬜ Pendente |

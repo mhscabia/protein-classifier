@@ -66,3 +66,38 @@ class HierarchicalMetricsEvaluator(HierarchicalEvaluator):
         logger.info("hP=%.4f  hR=%.4f  hF=%.4f", hp, hr, hf)
 
         return {"hP": round(hp, 4), "hR": round(hr, 4), "hF": round(hf, 4)}
+
+    def evaluate_flat(self, y_true: list[str], y_pred: list[str]) -> dict:
+        """Calcula metricas flat (sem expansao de ancestrais).
+
+        Retorna: {'flat_P': float, 'flat_R': float, 'flat_F': float}
+        """
+        if len(y_true) != len(y_pred):
+            raise ValueError(
+                f"y_true e y_pred devem ter o mesmo tamanho: "
+                f"{len(y_true)} != {len(y_pred)}"
+            )
+
+        sum_intersection = 0
+        sum_pred = 0
+        sum_true = 0
+
+        for true_str, pred_str in zip(y_true, y_pred):
+            true_terms = _parse_terms(true_str)
+            pred_terms = _parse_terms(pred_str)
+
+            sum_intersection += len(pred_terms & true_terms)
+            sum_pred += len(pred_terms)
+            sum_true += len(true_terms)
+
+        fp = sum_intersection / sum_pred if sum_pred > 0 else 0.0
+        fr = sum_intersection / sum_true if sum_true > 0 else 0.0
+        ff = (2 * fp * fr / (fp + fr)) if (fp + fr) > 0 else 0.0
+
+        logger.info("flat_P=%.4f  flat_R=%.4f  flat_F=%.4f", fp, fr, ff)
+
+        return {
+            "flat_P": round(fp, 4),
+            "flat_R": round(fr, 4),
+            "flat_F": round(ff, 4),
+        }
