@@ -1,3 +1,4 @@
+from collections import deque
 from dataclasses import dataclass, field
 
 
@@ -23,15 +24,17 @@ class HierarchyGraph:
 
     def get_ancestors(self, term_id: str) -> list[str]:
         """Retorna todos os ancestrais — essencial para métricas hierárquicas."""
-        ancestors = []
-        queue = list(self._nodes[term_id].parent_ids) if term_id in self._nodes else []
+        visited: set[str] = set()
+        queue: deque[str] = deque(
+            self._nodes[term_id].parent_ids if term_id in self._nodes else []
+        )
         while queue:
-            parent_id = queue.pop(0)
-            if parent_id not in ancestors:
-                ancestors.append(parent_id)
+            parent_id = queue.popleft()
+            if parent_id not in visited:
+                visited.add(parent_id)
                 if parent_id in self._nodes:
                     queue.extend(self._nodes[parent_id].parent_ids)
-        return ancestors
+        return list(visited)
 
     def get_all_node_ids(self) -> list[str]:
         """Retorna todos os IDs de nos no grafo."""
