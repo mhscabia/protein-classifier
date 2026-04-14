@@ -1,4 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 
@@ -27,10 +29,12 @@ class PrepareDataPipeline:
         data_source: ProteinDataSource,
         preprocessor: ProteinPreprocessor,
         hierarchy_builder: HierarchyBuilder,
+        go_client=None,
     ):
         self._data_source = data_source
         self._preprocessor = preprocessor
         self._hierarchy_builder = hierarchy_builder
+        self._go_client = go_client
 
     def execute(self, limit: int) -> PipelineResult:
         # Modulo 1: aquisicao
@@ -52,10 +56,23 @@ class PrepareDataPipeline:
         # Modulo 3: construcao da hierarquia
         logger.info("=== Modulo 3: Construcao da hierarquia ===")
         all_go_terms = self._extract_go_terms(processed)
+        self._ensure_go_terms_fetched(all_go_terms)
         hierarchy = self._hierarchy_builder.build(all_go_terms)
         logger.info("Hierarquia OK: %d nos", len(hierarchy))
 
         return PipelineResult(proteins=processed, hierarchy=hierarchy)
+
+    def _ensure_go_terms_fetched(self, all_go_terms: list[str]) -> None:
+        """Chama go_client.fetch_go_terms() apenas se go_terms.json ainda nao existe."""
+        if self._go_client is None:
+            return
+        raw_path = Path(self._go_client._raw_path)
+        go_terms_file = raw_path / "go_terms.json"
+        if go_terms_file.exists():
+            logger.info("go_terms.json ja existe — pulando busca no QuickGO")
+            return
+        logger.info("go_terms.json nao encontrado — buscando %d termos GO...", len(all_go_terms))
+        self._go_client.fetch_go_terms(all_go_terms)
 
     @staticmethod
     def _extract_go_terms(data: pd.DataFrame) -> list[str]:

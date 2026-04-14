@@ -5,6 +5,7 @@ from src.shared.config_loader import load_config
 from src.shared.logger import get_logger
 
 from src.infrastructure.data_sources.uniprot_client import UniProtClient
+from src.infrastructure.data_sources.go_client import GOClient
 from src.infrastructure.preprocessing.pandas_preprocessor import PandasPreprocessor
 from src.infrastructure.hierarchy.go_dag_builder import GODagBuilder
 from src.infrastructure.models.random_forest_classifier import (
@@ -44,6 +45,7 @@ def main() -> None:
         data_source=UniProtClient(config),
         preprocessor=preprocessor,
         hierarchy_builder=GODagBuilder(config),
+        go_client=GOClient(config),
     )
     pipeline_result = data_pipeline.execute(limit=config["data"]["uniprot_limit"])
 
