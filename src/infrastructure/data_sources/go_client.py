@@ -92,7 +92,11 @@ class GOClient:
             response.raise_for_status()
             data = response.json()
             results = data.get("results", [])
-            return {r for r in results if isinstance(r, str)}
+            ancestor_ids: set[str] = set()
+            for item in results:
+                if isinstance(item, dict):
+                    ancestor_ids.update(item.get("ancestors", []))
+            return ancestor_ids - {term_id}
         except requests.RequestException as e:
             logger.warning("Falha ao buscar ancestrais de %s: %s", term_id, e)
             return set()
