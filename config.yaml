@@ -13,3 +13,6 @@ output:
 
 logging:
   level: "INFO"
+
+pipeline:
+  mode: "interactive"   # "auto" (sem pausas) ou "interactive" (pausa entre módulos)

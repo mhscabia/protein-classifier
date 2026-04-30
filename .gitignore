@@ -11,3 +11,7 @@ dist/
 build/
 .pytest_cache/
 .mypy_cache/
+data/output/
+e2e_output.txt
+.claude/worktrees/
+.claude/settings.local.json

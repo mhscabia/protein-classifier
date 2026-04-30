@@ -3,6 +3,7 @@ from pathlib import Path
 
 from src.shared.config_loader import load_config
 from src.shared.logger import get_logger
+from src.shared import presenter
 
 from src.infrastructure.data_sources.uniprot_client import UniProtClient
 from src.infrastructure.data_sources.go_client import GOClient
@@ -34,12 +35,11 @@ def main() -> None:
     logging.basicConfig(level=getattr(logging, log_level))
     logger = get_logger(__name__)
 
-    logger.info("Protein Classifier — iniciando pipeline")
-    logger.info(
-        "Configuracao carregada: uniprot_limit=%d", config["data"]["uniprot_limit"]
-    )
+    mode = config.get("pipeline", {}).get("mode", "auto")
 
-    # === Modulos 1-3: Aquisicao, Pre-processamento, Hierarquia ===
+    logger.info("Protein Classifier — iniciando pipeline  [modo: %s]", mode)
+
+    # === Módulos 1-3: Aquisição, Pré-processamento, Hierarquia ===
     preprocessor = PandasPreprocessor(config)
     data_pipeline = PrepareDataPipeline(
         data_source=UniProtClient(config),
@@ -52,7 +52,12 @@ def main() -> None:
     proteins = pipeline_result.proteins
     hierarchy = pipeline_result.hierarchy
 
-    # === Modulos 4-5: Treinamento e Avaliacao ===
+    fetched_count = config["data"]["uniprot_limit"]
+    clean_count = len(proteins)
+    presenter.print_data_pipeline_result(fetched_count, clean_count, len(hierarchy))
+    presenter.pause_if_interactive(mode, "Módulo 4-5")
+
+    # === Módulos 4-5: Treinamento e Avaliação ===
     classifiers = {
         "RandomForest": RandomForestHierarchicalClassifier(config),
         "SVM": SVMHierarchicalClassifier(config),
@@ -64,11 +69,11 @@ def main() -> None:
     results = []
     flat_results = {}
     for name, clf in classifiers.items():
-        logger.info("=== Treinando %s ===", name)
+        logger.info("Treinando %s...", name)
         train_uc = TrainClassifiersUseCase(classifier=clf, config=config)
         train_result = train_uc.execute(proteins, hierarchy)
 
-        logger.info("=== Avaliando %s ===", name)
+        logger.info("Avaliando %s...", name)
         eval_result = eval_use_case.execute(
             classifier=train_result.classifier,
             classifier_name=name,
@@ -77,41 +82,18 @@ def main() -> None:
         )
         results.append(eval_result)
 
-        # Metricas flat para comparacao
         y_true = train_result.y_test.tolist()
-        flat_metrics = evaluator.evaluate_flat(y_true, eval_result.y_pred)
-        flat_results[name] = flat_metrics
-
-    # === Comparacao de resultados ===
-    logger.info("=== Comparacao de resultados ===")
-    for r in results:
-        fm = flat_results[r.classifier_name]
-        logger.info(
-            "%s: hP=%.4f  hR=%.4f  hF=%.4f | flat_P=%.4f  flat_R=%.4f  flat_F=%.4f",
-            r.classifier_name,
-            r.metrics["hP"], r.metrics["hR"], r.metrics["hF"],
-            fm["flat_P"], fm["flat_R"], fm["flat_F"],
-        )
+        flat_results[name] = evaluator.evaluate_flat(y_true, eval_result.y_pred)
 
     best = max(results, key=lambda r: r.metrics["hF"])
-    logger.info(
-        "Melhor classificador: %s (hF=%.4f)", best.classifier_name, best.metrics["hF"]
-    )
 
-    # === Modulo 6: Previsao e Visualizacao ===
-    logger.info("=== Modulo 6: Previsao e Visualizacao ===")
+    presenter.print_metrics_table(results, flat_results)
+    presenter.print_best_classifier(best.classifier_name, best.metrics["hF"])
+    presenter.pause_if_interactive(mode, "Módulo 6")
 
-    # Sequencia de exemplo: primeira proteina do dataset
+    # === Módulo 6: Previsão e Visualização ===
     example_sequence = proteins["sequence"].iloc[0]
-    logger.info(
-        "Sequencia de exemplo: %s... (%d aa)",
-        example_sequence[:30], len(example_sequence),
-    )
 
-    # Inferencia com o melhor classificador
-    best_clf = next(
-        r for r in results if r.classifier_name == best.classifier_name
-    )
     best_classifier_obj = classifiers[best.classifier_name]
     pipeline = InferencePipeline(
         classifier=best_classifier_obj, scaler=preprocessor.scaler,
@@ -119,18 +101,23 @@ def main() -> None:
     classify_uc = ClassifyProteinUseCase(pipeline)
     predicted_terms = classify_uc.execute(example_sequence)
 
-    # Visualizacoes
     output_dir = Path(config.get("output", {}).get("path", "data/output/"))
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    plot_dag_predictions(
-        hierarchy, predicted_terms, output_dir / "dag_predictions.png",
-    )
+    plot_dag_predictions(hierarchy, predicted_terms, output_dir / "dag_predictions.png")
     plot_metrics_comparison(
         best.metrics,
         flat_results[best.classifier_name],
         best.classifier_name,
         output_dir / "metrics_comparison.png",
+    )
+
+    presenter.print_prediction_result(
+        predicted_terms,
+        hierarchy,
+        example_sequence,
+        best.classifier_name,
+        str(output_dir),
     )
 
     logger.info("Pipeline concluido com sucesso")
