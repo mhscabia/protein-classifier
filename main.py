@@ -1,3 +1,4 @@
+import datetime
 import logging
 from pathlib import Path
 
@@ -9,10 +10,6 @@ from src.infrastructure.data_sources.uniprot_client import UniProtClient
 from src.infrastructure.data_sources.go_client import GOClient
 from src.infrastructure.preprocessing.pandas_preprocessor import PandasPreprocessor
 from src.infrastructure.hierarchy.go_dag_builder import GODagBuilder
-from src.infrastructure.models.random_forest_classifier import (
-    RandomForestHierarchicalClassifier,
-)
-from src.infrastructure.models.svm_classifier import SVMHierarchicalClassifier
 from src.infrastructure.models.lcn_classifier import LCNClassifier
 from src.infrastructure.evaluation.hierarchical_metrics import (
     HierarchicalMetricsEvaluator,
@@ -22,16 +19,16 @@ from src.infrastructure.visualization.result_visualizer import (
     plot_dag_predictions,
     plot_metrics_comparison,
 )
-
-from src.application.use_cases.prepare_data_pipeline import PrepareDataPipeline
-from src.application.use_cases.train_classifiers import TrainClassifiersUseCase
-from src.application.use_cases.evaluate_classifiers import EvaluateClassifiersUseCase
-from src.application.use_cases.classify_protein import ClassifyProteinUseCase
 from src.infrastructure.persistence.model_persistence import (
     load_model,
     model_exists,
     save_model,
 )
+
+from src.application.use_cases.prepare_data_pipeline import PrepareDataPipeline
+from src.application.use_cases.train_classifiers import TrainClassifiersUseCase
+from src.application.use_cases.evaluate_classifiers import EvaluateClassifiersUseCase
+from src.application.use_cases.classify_protein import ClassifyProteinUseCase
 
 
 def main() -> None:
@@ -65,61 +62,41 @@ def main() -> None:
 
     persist_path = config.get("model", {}).get("persist_path", "data/models/")
 
-    best_metrics = None
-    best_flat = None
-    best_name = None
+    lcn_metrics = None
+    lcn_flat = None
 
     if model_exists(persist_path):
         logger.info("Modelo encontrado em disco — pulando treinamento")
-        best_classifier_obj, saved_scaler, saved_meta = load_model(persist_path)
-        best_name = saved_meta.get("classifier_name", "carregado")
+        lcn, _saved_scaler, _saved_meta = load_model(persist_path)
         presenter.pause_if_interactive(mode, "Módulo 6")
     else:
         # === Módulos 4-5: Treinamento e Avaliação ===
-        import datetime
-
-        classifiers = {
-            "RandomForest": RandomForestHierarchicalClassifier(config),
-            "SVM": SVMHierarchicalClassifier(config),
-            "LCN": LCNClassifier(config),
-        }
-
+        lcn = LCNClassifier(config)
         evaluator = HierarchicalMetricsEvaluator(hierarchy)
         eval_use_case = EvaluateClassifiersUseCase(evaluator)
 
-        results = []
-        flat_results = {}
-        for name, clf in classifiers.items():
-            logger.info("Treinando %s...", name)
-            train_uc = TrainClassifiersUseCase(classifier=clf, config=config)
-            train_result = train_uc.execute(proteins, hierarchy)
+        logger.info("Treinando LCN...")
+        train_uc = TrainClassifiersUseCase(classifier=lcn, config=config)
+        train_result = train_uc.execute(proteins, hierarchy)
 
-            logger.info("Avaliando %s...", name)
-            eval_result = eval_use_case.execute(
-                classifier=train_result.classifier,
-                classifier_name=name,
-                X_test=train_result.X_test,
-                y_test=train_result.y_test,
-            )
-            results.append(eval_result)
+        logger.info("Avaliando LCN...")
+        eval_result = eval_use_case.execute(
+            classifier=train_result.classifier,
+            classifier_name="LCN",
+            X_test=train_result.X_test,
+            y_test=train_result.y_test,
+        )
+        lcn_metrics = eval_result.metrics
+        y_true = train_result.y_test.tolist()
+        lcn_flat = evaluator.evaluate_flat(y_true, eval_result.y_pred)
 
-            y_true = train_result.y_test.tolist()
-            flat_results[name] = evaluator.evaluate_flat(y_true, eval_result.y_pred)
-
-        best = max(results, key=lambda r: r.metrics["hF"])
-        best_classifier_obj = classifiers[best.classifier_name]
-        best_metrics = best.metrics
-        best_flat = flat_results[best.classifier_name]
-        best_name = best.classifier_name
-
-        presenter.print_metrics_table(results, flat_results)
-        presenter.print_best_classifier(best_name, best_metrics["hF"])
+        presenter.print_metrics_table([eval_result], {"LCN": lcn_flat})
 
         save_model(
-            best_classifier_obj,
+            lcn,
             preprocessor.scaler,
             {
-                "classifier_name": best_name,
+                "classifier_name": "LCN",
                 "uniprot_limit": config["data"]["uniprot_limit"],
                 "date": datetime.date.today().isoformat(),
             },
@@ -132,7 +109,7 @@ def main() -> None:
     example_sequence = proteins["sequence"].iloc[0]
 
     pipeline = InferencePipeline(
-        classifier=best_classifier_obj, scaler=preprocessor.scaler,
+        classifier=lcn, scaler=preprocessor.scaler,
     )
     classify_uc = ClassifyProteinUseCase(pipeline)
     predicted_terms = classify_uc.execute(example_sequence)
@@ -141,11 +118,11 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     plot_dag_predictions(hierarchy, predicted_terms, output_dir / "dag_predictions.png")
-    if best_metrics and best_flat:
+    if lcn_metrics and lcn_flat:
         plot_metrics_comparison(
-            best_metrics,
-            best_flat,
-            best_name,
+            lcn_metrics,
+            lcn_flat,
+            "LCN",
             output_dir / "metrics_comparison.png",
         )
 
@@ -153,7 +130,7 @@ def main() -> None:
         predicted_terms,
         hierarchy,
         example_sequence,
-        best_name,
+        "LCN",
         str(output_dir),
     )
 

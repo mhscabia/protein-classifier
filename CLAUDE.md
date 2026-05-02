@@ -270,12 +270,13 @@ Após persistência implementada, aumentar `uniprot_limit` progressivamente.
 | M1 — Aquisição | ✅ |
 | M2 — Pré-processamento | ✅ |
 | M3 — Hierarquia DAG | ✅ |
-| M4 — Treinamento RF + SVM | ✅ |
+| M4 — Treinamento LCN | ✅ |
 | M5 — Avaliação hierárquica | ✅ |
 | M6 — Inferência e visualização | ✅ |
-| LCN | ⬜ |
-| Persistência do modelo | ⬜ |
+| Persistência do modelo | ✅ |
 | Aumentar volume de dados | ⬜ |
+
+> Branch `archive/all-classifiers` preserva a versão com RF + SVM + LCN para referência histórica.
 
 ---
 
@@ -306,7 +307,14 @@ Após persistência implementada, aumentar `uniprot_limit` progressivamente.
 - [ ] TASK-16 — Executar pipeline completo validando que segunda execução pula treino
 
 ### Bloco C — Escalar dados
-- [ ] TASK-17 — Alterar `uniprot_limit` para `2000` em `config.yaml`
-- [ ] TASK-18 — Deletar `data/models/` e `data/raw/` para forçar re-fetch
-- [ ] TASK-19 — Executar pipeline completo com 2000 proteínas e registrar métricas
-- [ ] TASK-20 — Atualizar tabela de resultados no CLAUDE.md com novos números
+- [x] TASK-17 — Alterar `uniprot_limit` para `2000` em `config.yaml`
+- [x] TASK-18 — Deletar `data/models/` e `data/raw/` para forçar re-fetch
+- [x] TASK-19 — Executar pipeline completo com 2000 proteínas e registrar métricas
+- [x] TASK-20 — Atualizar tabela de resultados no CLAUDE.md com novos números
+
+### Bloco D — Refatoração LCN-only
+- [x] TASK-21 — Criar branch `archive/all-classifiers` com RF + SVM + LCN preservados
+- [x] TASK-22 — Remover RF e SVM do `main.py` (pipeline LCN-only)
+- [x] TASK-23 — Atualizar CLAUDE.md (STATUS + nota sobre archive branch)
+- [ ] TASK-24 — Executar `pytest tests/unit/` e confirmar sem regressões
+- [ ] TASK-25 — Executar `python main.py` e confirmar pipeline LCN-only funciona
