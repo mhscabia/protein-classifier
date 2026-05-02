@@ -304,7 +304,7 @@ Após persistência implementada, aumentar `uniprot_limit` progressivamente.
 - [x] TASK-13 — Criar `tests/unit/test_model_persistence.py` com 4 testes
 - [x] TASK-14 — Integrar persistência em `main.py`: checar, carregar ou salvar após treino
 - [x] TASK-15 — Executar `pytest tests/unit/test_model_persistence.py` e corrigir falhas
-- [ ] TASK-16 — Executar pipeline completo validando que segunda execução pula treino
+- [x] TASK-16 — Executar pipeline completo validando que segunda execução pula treino
 
 ### Bloco C — Escalar dados
 - [x] TASK-17 — Alterar `uniprot_limit` para `2000` em `config.yaml`
@@ -316,5 +316,5 @@ Após persistência implementada, aumentar `uniprot_limit` progressivamente.
 - [x] TASK-21 — Criar branch `archive/all-classifiers` com RF + SVM + LCN preservados
 - [x] TASK-22 — Remover RF e SVM do `main.py` (pipeline LCN-only)
 - [x] TASK-23 — Atualizar CLAUDE.md (STATUS + nota sobre archive branch)
-- [ ] TASK-24 — Executar `pytest tests/unit/` e confirmar sem regressões
-- [ ] TASK-25 — Executar `python main.py` e confirmar pipeline LCN-only funciona
+- [x] TASK-24 — Executar `pytest tests/unit/` e confirmar sem regressões
+- [x] TASK-25 — Executar `python main.py` e confirmar pipeline LCN-only funciona
