@@ -62,8 +62,10 @@ class LCNClassifier(HierarchicalClassifier):
                 continue
 
             clf = RandomForestClassifier(
-                n_estimators=10,
+                n_estimators=100,
                 random_state=self._seed,
+                class_weight="balanced",
+                n_jobs=-1,
             )
             clf.fit(X_features, y_binary)
             self._node_classifiers[term_id] = clf
