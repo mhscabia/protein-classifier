@@ -1,42 +1,16 @@
-# CLAUDE.md — Contexto do Projeto TCC
+# CLAUDE.md — Protein Classifier
 ## Previsão de Função de Proteínas com Classificação Hierárquica
 
 > Este arquivo é lido automaticamente pelo Claude Code a cada sessão.
-> Ele define a arquitetura, convenções, escopo e estado atual do projeto.
 > **Nunca remova ou edite este arquivo sem instrução explícita.**
-
----
-
-## IDENTIDADE DO PROJETO
-
-| Campo | Valor |
-|---|---|
-| Aluno | Matheus Henrique Scabia de Jesus |
-| Orientador | Julio Cesar Nievola |
-| Instituição | PUCPR — Engenharia de Computação |
-| Fase atual | 3º bimestre IOPT — Protótipo |
-| Entrega crítica | 22/04/2026 — Projeto Físico Revisado |
-| Defesa | 28–30/04/2026 — Defesa do Protótipo |
 
 ---
 
 ## OBJETIVO DO SISTEMA
 
-Desenvolver um pipeline de aprendizado de máquina que receba dados de proteínas
-e classifique suas funções biológicas utilizando **classificação hierárquica**,
-respeitando a estrutura DAG (Directed Acyclic Graph) da Gene Ontology (GO).
-
-Diferente da classificação flat: as dependências entre classes são levadas em conta.
-Cada nó filho herda características do nó pai na hierarquia.
-
----
-
-## DATASET
-
-- **Fonte de proteínas:** UniProt Swiss-Prot (API pública)
-- **Fonte da hierarquia:** Gene Ontology — subontologia `molecular_function`
-- **Limite do protótipo:** 500 proteínas (`config.yaml`)
-- **Seed fixa:** 42 (reprodutibilidade obrigatória)
+Pipeline de aprendizado de máquina que recebe dados de proteínas e classifica
+suas funções biológicas usando classificação hierárquica, respeitando a estrutura
+DAG da Gene Ontology (GO).
 
 ---
 
@@ -45,357 +19,259 @@ Cada nó filho herda características do nó pai na hierarquia.
 ```
 protein_classifier/
 │
-├── CLAUDE.md                    ← ESTE ARQUIVO
 ├── main.py                      ← Ponto de entrada
 ├── config.yaml                  ← Parâmetros centralizados
-├── requirements.txt
 │
 ├── src/
-│   ├── domain/                  ← Regras de negócio puras (zero dependência externa)
+│   ├── domain/
 │   │   ├── entities/            ← Protein, FunctionNode, HierarchyGraph
-│   │   └── interfaces/          ← ABCs de cada módulo (contratos)
+│   │   └── interfaces/          ← ABCs: HierarchicalClassifier, ProteinDataSource, etc.
 │   │
-│   ├── application/             ← Casos de uso (orquestra domínio)
-│   │   └── use_cases/
+│   ├── application/
+│   │   └── use_cases/           ← Orquestração dos módulos
 │   │
-│   ├── infrastructure/          ← Implementações concretas
-│   │   ├── data_sources/        ← Módulo 1: cliente UniProt + GO
-│   │   ├── preprocessing/       ← Módulo 2: Pandas
-│   │   ├── hierarchy/           ← Módulo 3: construção do DAG
-│   │   ├── models/              ← Módulo 4: Random Forest + SVM
-│   │   ├── evaluation/          ← Módulo 5: métricas hierárquicas
-│   │   └── prediction/          ← Módulo 6: pipeline de inferência
+│   ├── infrastructure/
+│   │   ├── data_sources/        ← M1: UniProtClient, GOClient
+│   │   ├── preprocessing/       ← M2: PandasPreprocessor
+│   │   ├── hierarchy/           ← M3: GODagBuilder
+│   │   ├── models/              ← M4: RF, SVM, LCN (a implementar)
+│   │   ├── evaluation/          ← M5: HierarchicalMetricsEvaluator
+│   │   ├── prediction/          ← M6: InferencePipeline
+│   │   ├── persistence/         ← NOVO: ModelPersistence (a implementar)
+│   │   └── visualization/       ← ResultVisualizer
 │   │
-│   └── shared/                  ← Logging, config loader, exceptions
+│   └── shared/                  ← logger, config_loader, presenter
 │
 ├── tests/
 │   ├── unit/
 │   └── integration/
 │
-├── data/
-│   ├── raw/                     ← Dados brutos (nunca editar manualmente)
-│   └── processed/               ← Dados após pré-processamento
-│
-└── notebooks/                   ← Exploração/visualização (não entra no pipeline)
+└── data/
+    ├── raw/                     ← proteins.csv, go_terms.json
+    ├── processed/               ← proteins_clean.csv
+    ├── models/                  ← NOVO: modelos persistidos (gitignored)
+    └── output/                  ← Gráficos gerados (gitignored)
 ```
 
 ### Regra de dependência (NUNCA violar)
 ```
 infrastructure → application → domain
 ```
-O domínio não importa nada de fora. Infraestrutura depende de abstrações, não de concretos.
 
 ---
 
-## MÓDULOS FUNCIONAIS (em ordem de implementação)
+## O QUE ESTÁ IMPLEMENTADO
 
-### Módulo 1 — Aquisição de Dados
-- **Interface:** `src/domain/interfaces/data_source.py` → `ProteinDataSource`
-- **Implementação:** `src/infrastructure/data_sources/uniprot_client.py`
-- **Responsabilidade:** buscar proteínas da UniProt Swiss-Prot via API REST e termos GO via OBO Foundry
-- **Saída:** `data/raw/proteins.csv` e `data/raw/go_terms.json`
-- **Obrigatório:** script de verificação de conformidade (`verify_conformity`)
+### M1 — Aquisição de dados ✅
+- `uniprot_client.py` — busca proteínas da Swiss-Prot via API REST com paginação
+- `go_client.py` — coleta termos GO e ancestrais via QuickGO em lotes de 25
+- Saída: `data/raw/proteins.csv` e `data/raw/go_terms.json`
+- `go_terms.json` só é rebuscado se não existir em disco
 
-### Módulo 2 — Pré-processamento
-- **Interface:** `src/domain/interfaces/preprocessor.py` → `ProteinPreprocessor`
-- **Implementação:** `src/infrastructure/preprocessing/pandas_preprocessor.py`
-- **Responsabilidade:** limpeza (nulos, duplicatas), normalização de features
-- **Ferramenta principal:** Pandas
-- **Saída:** `data/processed/proteins_clean.csv`
+### M2 — Pré-processamento ✅
+- `pandas_preprocessor.py`
+- `clean()`: remove nulos, vazios, duplicatas, sequências com caracteres inválidos
+- `normalize()`: extrai 22 features numéricas + aplica `StandardScaler`
+- Features: `seq_length`, `molecular_weight`, `aa_A`...`aa_Y` (20 aminoácidos)
+- O scaler deve ser salvo junto com o modelo — essencial para inferência correta
 
-### Módulo 3 — Construção da Hierarquia
-- **Interface:** `src/domain/interfaces/hierarchy_builder.py` → `HierarchyBuilder`
-- **Implementação:** `src/infrastructure/hierarchy/go_dag_builder.py`
-- **Responsabilidade:** montar o DAG de termos GO com relações `is_a` e `part_of`
-- **Entidade central:** `HierarchyGraph` com método `get_ancestors(term_id)`
+### M3 — Hierarquia DAG ✅
+- `go_dag_builder.py`
+- Lê `go_terms.json`, monta `HierarchyGraph` com `FunctionNode`
+- `get_ancestors(term_id)` é o método central — usado em M4, M5 e M6
+- Filtra apenas termos relevantes às proteínas do dataset + seus ancestrais
 
-### Módulo 4 — Treinamento (PROTÓTIPO: RF + SVM)
-- **Interface:** `src/domain/interfaces/classifier.py` → `HierarchicalClassifier`
-- **Implementações:**
-  - `src/infrastructure/models/random_forest_classifier.py`
-  - `src/infrastructure/models/svm_classifier.py`
-- **Ferramenta:** scikit-learn
-- **⚠️ Redes neurais (TensorFlow/Keras) ficam para a implementação final — 4º bimestre**
+### M4 — Treinamento ✅ (RF + SVM)
+- `random_forest_classifier.py` — 100 árvores, multi-label com `MultiLabelBinarizer`
+- `svm_classifier.py` — `OneVsRestClassifier` com `SVC(kernel="rbf")`
+- Ambos propagam ancestrais nos labels antes de treinar
+- Ambos propagam ancestrais nas predições para garantir consistência hierárquica
 
-### Módulo 5 — Avaliação
-- **Interface:** `src/domain/interfaces/evaluator.py` → `HierarchicalEvaluator`
-- **Implementação:** `src/infrastructure/evaluation/hierarchical_metrics.py`
-- **Métricas obrigatórias:** hP (hierárquica precision), hR (hierárquica recall), hF (hierárquica F-measure)
-- **Comparação:** incluir baseline flat (sem considerar hierarquia)
-- **Ferramentas:** NumPy + Matplotlib
+### M5 — Avaliação ✅
+- `hierarchical_metrics.py`
+- `evaluate()`: hP, hR, hF com expansão de ancestrais antes de comparar
+- `evaluate_flat()`: mesmas métricas sem expansão — baseline de comparação
+- hP = Σ|pred∩true| / Σ|pred| ; hR = Σ|pred∩true| / Σ|true| ; hF = média harmônica
 
-### Módulo 6 — Previsão
-- **Interface:** implícita no caso de uso `ClassifyProteinUseCase`
-- **Implementação:** `src/infrastructure/prediction/inference_pipeline.py`
-- **Responsabilidade:** receber nova sequência → retornar nó GO mais próximo
-- **Saída:** visualização básica com Matplotlib
+### M6 — Inferência e Visualização ✅
+- `inference_pipeline.py` — extrai 22 features de sequência nova, aplica scaler, classifica
+- `result_visualizer.py` — gera `dag_predictions.png` e `metrics_comparison.png`
 
----
+### Resultados do E2E (500 proteínas, seed=42)
 
-## ENTIDADES DO DOMÍNIO
+| Classificador | hP | hR | hF | flat_F |
+|---|---|---|---|---|
+| SVM ⭐ | 0.8785 | 0.2119 | **0.3415** | 0.0315 |
+| Random Forest | 0.8884 | 0.2021 | 0.3294 | 0.0326 |
 
-### `src/domain/entities/protein.py`
-```python
-from dataclasses import dataclass
-
-@dataclass
-class Protein:
-    protein_id: str
-    sequence: str
-    go_terms: list[str]
-```
-
-### `src/domain/entities/hierarchy_graph.py`
-```python
-from dataclasses import dataclass, field
-
-@dataclass
-class FunctionNode:
-    term_id: str        # Ex: "GO:0003674"
-    name: str
-    parent_ids: list[str] = field(default_factory=list)
-    children_ids: list[str] = field(default_factory=list)
-
-class HierarchyGraph:
-    """DAG de termos GO — estrutura central do sistema."""
-
-    def __init__(self):
-        self._nodes: dict[str, FunctionNode] = {}
-
-    def add_node(self, node: FunctionNode) -> None:
-        self._nodes[node.term_id] = node
-
-    def get_node(self, term_id: str) -> FunctionNode | None:
-        return self._nodes.get(term_id)
-
-    def get_ancestors(self, term_id: str) -> list[str]:
-        """Retorna todos os ancestrais — essencial para métricas hierárquicas."""
-        ancestors = []
-        queue = list(self._nodes[term_id].parent_ids) if term_id in self._nodes else []
-        while queue:
-            parent_id = queue.pop(0)
-            if parent_id not in ancestors:
-                ancestors.append(parent_id)
-                if parent_id in self._nodes:
-                    queue.extend(self._nodes[parent_id].parent_ids)
-        return ancestors
-
-    def __len__(self) -> int:
-        return len(self._nodes)
-```
+Ganho hierárquico vs flat: ~10x.
 
 ---
 
-## INTERFACES (ABCs) DO DOMÍNIO
+## O QUE FALTA IMPLEMENTAR
 
-### `src/domain/interfaces/data_source.py`
-```python
-from abc import ABC, abstractmethod
-import pandas as pd
+### 1 — LCN (Local Classifier per Node) ⬜
 
-class ProteinDataSource(ABC):
-    @abstractmethod
-    def fetch_proteins(self, limit: int) -> pd.DataFrame:
-        """Retorna DataFrame: protein_id, sequence, go_terms."""
-        ...
-    @abstractmethod
-    def verify_conformity(self, data: pd.DataFrame) -> bool:
-        """Verifica colunas obrigatórias e ausência de nulos críticos."""
-        ...
+Classificador hierárquico puro. Principal evolução em relação ao protótipo.
+
+**Problema que resolve:** RF e SVM são classificadores flat — a hierarquia aparece
+só no pré-processamento e nas métricas, não no algoritmo. O LCN incorpora a
+hierarquia diretamente no modelo.
+
+**Conceito:** um classificador binário por nó do DAG. Cada um responde
+"essa proteína pertence a este nó ou não?". Predição top-down — começa na raiz,
+desce pela hierarquia, para quando o classificador do nó retorna negativo.
+
+**Por que melhora o recall:** divide o problema de 615 classes em subproblemas
+menores e mais balanceados. Cada nó treina apenas com proteínas relevantes
+para aquele ramo.
+
+**Arquivo:** `src/infrastructure/models/lcn_classifier.py`
+
+**Interface:** `HierarchicalClassifier` — métodos `train()` e `predict()`
+
+**Lógica do `train()`:**
+```
+Para cada nó do DAG:
+    positivos = proteínas que têm esse termo GO
+    negativos = proteínas que não têm esse termo GO
+    treinar RandomForestClassifier binário para esse nó
+    armazenar classificador indexado por term_id
 ```
 
-### `src/domain/interfaces/preprocessor.py`
-```python
-from abc import ABC, abstractmethod
-import pandas as pd
-
-class ProteinPreprocessor(ABC):
-    @abstractmethod
-    def clean(self, data: pd.DataFrame) -> pd.DataFrame: ...
-    @abstractmethod
-    def normalize(self, data: pd.DataFrame) -> pd.DataFrame: ...
+**Lógica do `predict()`:**
+```
+Para cada proteína:
+    fila = [raiz do DAG]
+    preditos = set()
+    Para cada nó na fila:
+        se classificador[nó].predict(X) == positivo:
+            preditos.add(nó.term_id)
+            fila.extend(nó.children_ids)
+    retornar preditos
 ```
 
-### `src/domain/interfaces/hierarchy_builder.py`
+**Classificador binário por nó:**
 ```python
-from abc import ABC, abstractmethod
-from src.domain.entities.hierarchy_graph import HierarchyGraph
-
-class HierarchyBuilder(ABC):
-    @abstractmethod
-    def build(self, go_terms: list[str]) -> HierarchyGraph: ...
+RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
 ```
 
-### `src/domain/interfaces/classifier.py`
+**Integração no `main.py`:**
 ```python
-from abc import ABC, abstractmethod
-import pandas as pd
-from src.domain.entities.hierarchy_graph import HierarchyGraph
-
-class HierarchicalClassifier(ABC):
-    @abstractmethod
-    def train(self, X: pd.DataFrame, y: pd.Series, hierarchy: HierarchyGraph) -> None: ...
-    @abstractmethod
-    def predict(self, X: pd.DataFrame) -> list[str]: ...
+classifiers = {
+    "RandomForest": RandomForestHierarchicalClassifier(config),
+    "SVM": SVMHierarchicalClassifier(config),
+    "LCN": LCNClassifier(config),
+}
 ```
 
-### `src/domain/interfaces/evaluator.py`
-```python
-from abc import ABC, abstractmethod
-
-class HierarchicalEvaluator(ABC):
-    @abstractmethod
-    def evaluate(self, y_true: list[str], y_pred: list[str]) -> dict:
-        """Retorna: {'hP': float, 'hR': float, 'hF': float}"""
-        ...
-```
+**Teste:** `tests/unit/test_lcn_classifier.py`
 
 ---
 
-## CONVENÇÕES DE CÓDIGO — OBRIGATÓRIAS
+### 2 — Persistência do modelo em disco ⬜
 
-### PEP 8 + Clean Code
-- Nomes de variáveis e funções: `snake_case`
-- Nomes de classes: `PascalCase`
-- Funções com **responsabilidade única** — se passar de 20 linhas, questionar se deve ser dividida
-- **Sem comentários óbvios** — o código deve se explicar pelos nomes
-- Comentários apenas onde a intenção não é óbvia pelo código
-- **DRY** — nunca duplicar lógica; extrair para função/classe compartilhada
+**Problema que resolve:** atualmente o modelo retreina a cada execução.
+Com datasets maiores isso se torna inviável.
 
-### SOLID
-- **S:** cada classe tem uma única razão para mudar
-- **O:** novas implementações de classificadores/datasources são adicionadas, não modificam o existente
-- **L:** todas as implementações de `HierarchicalClassifier` são intercambiáveis
-- **I:** interfaces enxutas — nenhuma ABC tem método desnecessário
-- **D:** casos de uso recebem interfaces, nunca implementações concretas
+**Arquivo:** `src/infrastructure/persistence/model_persistence.py`
 
-### Reprodutibilidade
-- Seed `42` fixada em todo código que usa aleatoriedade
-- Todos os parâmetros configuráveis via `config.yaml`, nunca hardcoded no código
+**O que salvar:** classificador treinado + `StandardScaler` do M2 + metadados
+(data de treino, `uniprot_limit`, métricas obtidas)
 
-### Testes
-- Todo módulo de `infrastructure/` deve ter teste correspondente em `tests/unit/`
-- Nomear: `test_<nome_do_modulo>.py`
-- Usar `pytest`
+**Biblioteca:** `joblib` — já disponível via scikit-learn
+
+**Interface:**
+```python
+def save_model(classifier, scaler, metadata: dict, path: str) -> None: ...
+def load_model(path: str) -> tuple: ...
+def model_exists(path: str) -> bool: ...
+```
+
+**Parâmetro no `config.yaml`:**
+```yaml
+model:
+  persist_path: "data/models/"
+```
+
+**Lógica no `main.py`:**
+```
+Se model_exists(persist_path):
+    classifier, scaler = load_model(persist_path)
+    pular M4
+Senão:
+    executar M4 normalmente
+    save_model(classifier, scaler, metadata, persist_path)
+```
+
+**`.gitignore`:** adicionar `data/models/`
+
+**Teste:** `tests/unit/test_model_persistence.py`
+
+---
+
+### 3 — Aumentar volume de dados ⬜
+
+Após persistência implementada, aumentar `uniprot_limit` progressivamente.
+
+- Atual: 500 proteínas
+- Meta: 2000–5000 (testar escalabilidade antes de ir além)
+- Teto da Swiss-Prot: ~570 mil proteínas revisadas
+
+---
+
+## CONVENÇÕES — OBRIGATÓRIAS
+
+- `snake_case` funções/variáveis, `PascalCase` classes
+- Responsabilidade única por função — questionar se passar de 20 linhas
+- Sem comentários óbvios — o código se explica pelos nomes
+- DRY — nunca duplicar lógica
+- Seed `42` em todo código que usa aleatoriedade
+- Todos os parâmetros no `config.yaml`, nunca hardcoded no código
+- Todo módulo novo em `infrastructure/` deve ter teste em `tests/unit/`
+- Dependências sempre apontam para dentro: `infrastructure → application → domain`
 
 ---
 
 ## TECNOLOGIAS PERMITIDAS
 
-| Biblioteca | Módulos que usa | Versão mínima |
-|---|---|---|
-| pandas | 2, 3 | 2.0.0 |
-| numpy | 5 | 1.26.0 |
-| scikit-learn | 4, 5 | 1.4.0 |
-| matplotlib | 5, 6 | 3.8.0 |
-| requests | 1 | 2.31.0 |
-| pyyaml | shared | 6.0.1 |
-| pytest | tests | 8.0.0 |
+| Biblioteca | Uso |
+|---|---|
+| pandas | M2, M3 |
+| numpy | M5 |
+| scikit-learn | M4, M5 |
+| matplotlib | M5, M6 |
+| requests | M1 |
+| pyyaml | shared |
+| pytest | tests |
+| networkx | M6 visualização |
+| joblib | persistence (NOVO) — via scikit-learn |
 
-**⚠️ TensorFlow/Keras:** apenas na implementação final (4º bimestre). Não instalar agora.
 **⚠️ Não adicionar bibliotecas fora desta lista sem aprovação explícita.**
 
 ---
 
-## RISCOS — MONITORAR ATIVAMENTE
+## RISCOS
 
-| Risco | Sinal de alerta | Ação |
+| Risco | Sinal | Ação |
 |---|---|---|
-| Integridade dos dados | Nulos inesperados, IDs duplicados | Executar `verify_conformity` antes de prosseguir |
-| Complexidade > O(n²) | Loops aninhados sobre o dataset completo | Sinalizar e propor alternativa |
-| Treinamento insuficiente | Métricas abaixo de baseline flat | Revisar hiperparâmetros e features |
-| Dataset comprometido | API retorna dados inconsistentes com GO | Fora do escopo — comunicar ao aluno |
+| LCN lento | Treino > 10 min para 500 proteínas | Limitar profundidade do DAG ou reduzir estimadores por nó |
+| Modelo desatualizado | Dataset mudou, modelo não retreinou | Salvar hash do `proteins.csv` com o modelo |
+| Recall do LCN não melhora | hR < 0.21 | Revisar balanceamento positivo/negativo por nó |
+| Complexidade > O(n²) | Loops aninhados sobre dataset | Sinalizar e propor alternativa |
 
 ---
 
-## CONFIG.YAML (referência)
+## STATUS
 
-```yaml
-data:
-  raw_path: "data/raw/"
-  processed_path: "data/processed/"
-  uniprot_limit: 500
-  go_namespace: "molecular_function"
-
-model:
-  random_seed: 42
-  test_size: 0.2
-  validation_size: 0.1
-
-logging:
-  level: "INFO"
-```
-
----
-
-## REQUIREMENTS.TXT (referência)
-
-```
-pandas>=2.0.0
-numpy>=1.26.0
-scikit-learn>=1.4.0
-matplotlib>=3.8.0
-requests>=2.31.0
-pyyaml>=6.0.1
-pytest>=8.0.0
-```
-
----
-
-## TAREFA DO DIA — 08/04/2026
-
-**Objetivo:** criar toda a estrutura de pastas, arquivos `__init__.py`, entidades, interfaces, `config.yaml`, `requirements.txt` e `main.py` esqueleto.
-
-### O que gerar agora:
-
-1. **Estrutura de diretórios completa** com `__init__.py` em cada pasta de módulo Python
-2. **`src/domain/entities/protein.py`** — dataclass `Protein`
-3. **`src/domain/entities/hierarchy_graph.py`** — `FunctionNode` + `HierarchyGraph`
-4. **`src/domain/interfaces/data_source.py`** — ABC `ProteinDataSource`
-5. **`src/domain/interfaces/preprocessor.py`** — ABC `ProteinPreprocessor`
-6. **`src/domain/interfaces/hierarchy_builder.py`** — ABC `HierarchyBuilder`
-7. **`src/domain/interfaces/classifier.py`** — ABC `HierarchicalClassifier`
-8. **`src/domain/interfaces/evaluator.py`** — ABC `HierarchicalEvaluator`
-9. **`src/shared/config_loader.py`** — carrega `config.yaml` com PyYAML
-10. **`src/shared/logger.py`** — logger padrão usando `logging` nativo do Python
-11. **`config.yaml`** — parâmetros centralizados
-12. **`requirements.txt`** — dependências listadas acima
-13. **`main.py`** — esqueleto com `if __name__ == "__main__"` e importação dos casos de uso
-14. **`.gitignore`** — excluir `data/raw/`, `data/processed/`, `__pycache__/`, `.env`, `*.pyc`
-
-### Implementações concretas (stubs para hoje — implementar nos próximos dias):
-- `src/infrastructure/data_sources/uniprot_client.py` — classe `UniProtClient(ProteinDataSource)` com métodos que levantam `NotImplementedError`
-- `src/infrastructure/preprocessing/pandas_preprocessor.py` — stub
-- `src/infrastructure/hierarchy/go_dag_builder.py` — stub
-- `src/infrastructure/models/random_forest_classifier.py` — stub
-- `src/infrastructure/models/svm_classifier.py` — stub
-- `src/infrastructure/evaluation/hierarchical_metrics.py` — stub
-- `src/infrastructure/prediction/inference_pipeline.py` — stub
-
-### Commit ao final:
-```
-git init
-git add .
-git commit -m "feat: initial project structure — Clean Architecture, domain entities and interfaces"
-```
-
----
-
-## ESTADO DO CRONOGRAMA
-
-| Data | Atividade | Status |
-|---|---|---|
-| 08/04 | Estrutura, entidades, interfaces | ✅ Concluído |
-| 09/04 | Módulo 1 — Aquisição de dados | ✅ Concluído |
-| 10/04 | Módulo 2 — Pré-processamento | ✅ Concluído |
-| 11/04 | Módulo 3 — Hierarquia DAG | ✅ Concluído |
-| 12/04 | Integração módulos 1–3 + testes | ✅ Concluído |
-| 13/04 | Buffer (testes unitários use cases) | ✅ Concluído |
-| 14/04 | Módulo 4 — Treinamento | ✅ Concluído |
-| 15/04 | Módulo 5 — Avaliação | ✅ Concluído |
-| 16/04 | Módulo 6 — Previsão | ✅ Concluído |
-| 17/04 | Integração completa + teste ponta a ponta | ⬜ Pendente |
-| 18–21/04 | Escrita do documento | ⬜ Pendente |
-| **22/04** | **ENTREGA Projeto Físico Revisado** | ⬜ Pendente |
-
-> Atualize os status neste arquivo ao final de cada sessão de trabalho.
+| Módulo | Status |
+|---|---|
+| M1 — Aquisição | ✅ |
+| M2 — Pré-processamento | ✅ |
+| M3 — Hierarquia DAG | ✅ |
+| M4 — Treinamento RF + SVM | ✅ |
+| M5 — Avaliação hierárquica | ✅ |
+| M6 — Inferência e visualização | ✅ |
+| LCN | ⬜ |
+| Persistência do modelo | ⬜ |
+| Aumentar volume de dados | ⬜ |
