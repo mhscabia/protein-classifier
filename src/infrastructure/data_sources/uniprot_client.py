@@ -152,8 +152,7 @@ class UniProtClient(ProteinDataSource):
         """Extrai URL da próxima página do header Link da UniProt."""
         if not link_header:
             return None
-        for part in link_header.split(","):
-            if 'rel="next"' in part:
-                url = part.split(";")[0].strip().strip("<>")
-                return url
+        # Usa regex para evitar falso split em vírgulas dentro da URL
+        for match in re.finditer(r'<([^>]+)>\s*;\s*rel="next"', link_header):
+            return match.group(1)
         return None
