@@ -103,6 +103,7 @@ infrastructure → application → domain
 |---|---|---|---|---|
 | SVM ⭐ | 0.8785 | 0.2119 | **0.3415** | 0.0315 |
 | Random Forest | 0.8884 | 0.2021 | 0.3294 | 0.0326 |
+| LCN | 0.8646 | 0.1934 | 0.3160 | 0.0330 |
 
 Ganho hierárquico vs flat: ~10x.
 
@@ -292,7 +293,7 @@ Após persistência implementada, aumentar `uniprot_limit` progressivamente.
 - [x] TASK-05 — Criar `tests/unit/test_lcn_classifier.py` com fixtures e 3 testes
 - [x] TASK-06 — Adicionar `LCNClassifier` ao dict `classifiers` em `main.py`
 - [x] TASK-07 — Executar `pytest tests/unit/test_lcn_classifier.py` e corrigir falhas
-- [ ] TASK-08 — Executar pipeline completo e registrar métricas do LCN na tabela acima
+- [x] TASK-08 — Executar pipeline completo e registrar métricas do LCN na tabela acima
 
 ### Bloco B — Persistência de modelo
 - [x] TASK-09 — Criar diretório `src/infrastructure/persistence/` + `__init__.py`
