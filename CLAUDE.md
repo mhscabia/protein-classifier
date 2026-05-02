@@ -275,3 +275,37 @@ Após persistência implementada, aumentar `uniprot_limit` progressivamente.
 | LCN | ⬜ |
 | Persistência do modelo | ⬜ |
 | Aumentar volume de dados | ⬜ |
+
+---
+
+## CHECKLIST DE IMPLEMENTAÇÃO
+
+> Atualizar checkboxes conforme tarefas são concluídas.
+> Ao iniciar uma sessão, ler esta seção para saber por onde continuar.
+> Formato: `- [x]` = concluído, `- [ ]` = pendente, `- [~]` = em andamento.
+
+### Bloco A — LCN (Local Classifier per Node)
+- [x] TASK-01 — Criar `src/infrastructure/models/lcn_classifier.py` com classe `LCNClassifier` e `__init__`
+- [x] TASK-02 — Implementar `train()` no LCNClassifier (loop por nó do DAG, RF binário por nó)
+- [x] TASK-03 — Implementar `predict()` no LCNClassifier (travessia top-down, fila BFS)
+- [x] TASK-04 — Implementar `_augment_with_ancestors()` (reutilizar padrão do RF/SVM)
+- [x] TASK-05 — Criar `tests/unit/test_lcn_classifier.py` com fixtures e 3 testes
+- [x] TASK-06 — Adicionar `LCNClassifier` ao dict `classifiers` em `main.py`
+- [x] TASK-07 — Executar `pytest tests/unit/test_lcn_classifier.py` e corrigir falhas
+- [ ] TASK-08 — Executar pipeline completo e registrar métricas do LCN na tabela acima
+
+### Bloco B — Persistência de modelo
+- [x] TASK-09 — Criar diretório `src/infrastructure/persistence/` + `__init__.py`
+- [x] TASK-10 — Criar `model_persistence.py` com `save_model()`, `load_model()`, `model_exists()`
+- [x] TASK-11 — Adicionar `persist_path: "data/models/"` em `config.yaml` (dentro de `model:`)
+- [x] TASK-12 — Adicionar `data/models/` ao `.gitignore`
+- [x] TASK-13 — Criar `tests/unit/test_model_persistence.py` com 4 testes
+- [x] TASK-14 — Integrar persistência em `main.py`: checar, carregar ou salvar após treino
+- [x] TASK-15 — Executar `pytest tests/unit/test_model_persistence.py` e corrigir falhas
+- [ ] TASK-16 — Executar pipeline completo validando que segunda execução pula treino
+
+### Bloco C — Escalar dados
+- [ ] TASK-17 — Alterar `uniprot_limit` para `2000` em `config.yaml`
+- [ ] TASK-18 — Deletar `data/models/` e `data/raw/` para forçar re-fetch
+- [ ] TASK-19 — Executar pipeline completo com 2000 proteínas e registrar métricas
+- [ ] TASK-20 — Atualizar tabela de resultados no CLAUDE.md com novos números

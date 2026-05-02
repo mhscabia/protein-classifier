@@ -13,6 +13,7 @@ from src.infrastructure.models.random_forest_classifier import (
     RandomForestHierarchicalClassifier,
 )
 from src.infrastructure.models.svm_classifier import SVMHierarchicalClassifier
+from src.infrastructure.models.lcn_classifier import LCNClassifier
 from src.infrastructure.evaluation.hierarchical_metrics import (
     HierarchicalMetricsEvaluator,
 )
@@ -26,6 +27,11 @@ from src.application.use_cases.prepare_data_pipeline import PrepareDataPipeline
 from src.application.use_cases.train_classifiers import TrainClassifiersUseCase
 from src.application.use_cases.evaluate_classifiers import EvaluateClassifiersUseCase
 from src.application.use_cases.classify_protein import ClassifyProteinUseCase
+from src.infrastructure.persistence.model_persistence import (
+    load_model,
+    model_exists,
+    save_model,
+)
 
 
 def main() -> None:
@@ -57,44 +63,74 @@ def main() -> None:
     presenter.print_data_pipeline_result(fetched_count, clean_count, len(hierarchy))
     presenter.pause_if_interactive(mode, "Módulo 4-5")
 
-    # === Módulos 4-5: Treinamento e Avaliação ===
-    classifiers = {
-        "RandomForest": RandomForestHierarchicalClassifier(config),
-        "SVM": SVMHierarchicalClassifier(config),
-    }
+    persist_path = config.get("model", {}).get("persist_path", "data/models/")
 
-    evaluator = HierarchicalMetricsEvaluator(hierarchy)
-    eval_use_case = EvaluateClassifiersUseCase(evaluator)
+    best_metrics = None
+    best_flat = None
+    best_name = None
 
-    results = []
-    flat_results = {}
-    for name, clf in classifiers.items():
-        logger.info("Treinando %s...", name)
-        train_uc = TrainClassifiersUseCase(classifier=clf, config=config)
-        train_result = train_uc.execute(proteins, hierarchy)
+    if model_exists(persist_path):
+        logger.info("Modelo encontrado em disco — pulando treinamento")
+        best_classifier_obj, saved_scaler, saved_meta = load_model(persist_path)
+        best_name = saved_meta.get("classifier_name", "carregado")
+        presenter.pause_if_interactive(mode, "Módulo 6")
+    else:
+        # === Módulos 4-5: Treinamento e Avaliação ===
+        import datetime
 
-        logger.info("Avaliando %s...", name)
-        eval_result = eval_use_case.execute(
-            classifier=train_result.classifier,
-            classifier_name=name,
-            X_test=train_result.X_test,
-            y_test=train_result.y_test,
+        classifiers = {
+            "RandomForest": RandomForestHierarchicalClassifier(config),
+            "SVM": SVMHierarchicalClassifier(config),
+            "LCN": LCNClassifier(config),
+        }
+
+        evaluator = HierarchicalMetricsEvaluator(hierarchy)
+        eval_use_case = EvaluateClassifiersUseCase(evaluator)
+
+        results = []
+        flat_results = {}
+        for name, clf in classifiers.items():
+            logger.info("Treinando %s...", name)
+            train_uc = TrainClassifiersUseCase(classifier=clf, config=config)
+            train_result = train_uc.execute(proteins, hierarchy)
+
+            logger.info("Avaliando %s...", name)
+            eval_result = eval_use_case.execute(
+                classifier=train_result.classifier,
+                classifier_name=name,
+                X_test=train_result.X_test,
+                y_test=train_result.y_test,
+            )
+            results.append(eval_result)
+
+            y_true = train_result.y_test.tolist()
+            flat_results[name] = evaluator.evaluate_flat(y_true, eval_result.y_pred)
+
+        best = max(results, key=lambda r: r.metrics["hF"])
+        best_classifier_obj = classifiers[best.classifier_name]
+        best_metrics = best.metrics
+        best_flat = flat_results[best.classifier_name]
+        best_name = best.classifier_name
+
+        presenter.print_metrics_table(results, flat_results)
+        presenter.print_best_classifier(best_name, best_metrics["hF"])
+
+        save_model(
+            best_classifier_obj,
+            preprocessor.scaler,
+            {
+                "classifier_name": best_name,
+                "uniprot_limit": config["data"]["uniprot_limit"],
+                "date": datetime.date.today().isoformat(),
+            },
+            persist_path,
         )
-        results.append(eval_result)
-
-        y_true = train_result.y_test.tolist()
-        flat_results[name] = evaluator.evaluate_flat(y_true, eval_result.y_pred)
-
-    best = max(results, key=lambda r: r.metrics["hF"])
-
-    presenter.print_metrics_table(results, flat_results)
-    presenter.print_best_classifier(best.classifier_name, best.metrics["hF"])
-    presenter.pause_if_interactive(mode, "Módulo 6")
+        logger.info("Modelo salvo em %s", persist_path)
+        presenter.pause_if_interactive(mode, "Módulo 6")
 
     # === Módulo 6: Previsão e Visualização ===
     example_sequence = proteins["sequence"].iloc[0]
 
-    best_classifier_obj = classifiers[best.classifier_name]
     pipeline = InferencePipeline(
         classifier=best_classifier_obj, scaler=preprocessor.scaler,
     )
@@ -105,18 +141,19 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     plot_dag_predictions(hierarchy, predicted_terms, output_dir / "dag_predictions.png")
-    plot_metrics_comparison(
-        best.metrics,
-        flat_results[best.classifier_name],
-        best.classifier_name,
-        output_dir / "metrics_comparison.png",
-    )
+    if best_metrics and best_flat:
+        plot_metrics_comparison(
+            best_metrics,
+            best_flat,
+            best_name,
+            output_dir / "metrics_comparison.png",
+        )
 
     presenter.print_prediction_result(
         predicted_terms,
         hierarchy,
         example_sequence,
-        best.classifier_name,
+        best_name,
         str(output_dir),
     )
 
