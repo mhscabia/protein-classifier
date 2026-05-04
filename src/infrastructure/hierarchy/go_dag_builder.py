@@ -27,12 +27,14 @@ class GODagBuilder(HierarchyBuilder):
         min_support: int | None = None,
     ) -> HierarchyGraph:
         terms_data = self._load_terms()
-        graph = self._build_graph(terms_data)
-        graph = self._filter_relevant(graph, go_terms)
+        full_graph = self._build_graph(terms_data)
+        graph = self._filter_relevant(full_graph, go_terms)
 
         threshold = self._min_term_support if min_support is None else int(min_support)
         if threshold > 0 and term_counts is not None:
             graph = self._filter_by_support(graph, term_counts, threshold)
+
+        graph.set_full_graph(full_graph)
 
         logger.info(
             "DAG construido: %d nos para %d termos de entrada (min_support=%d)",

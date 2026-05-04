@@ -74,6 +74,22 @@ class TestFilterBySupport:
         assert graph.get_node("GO:9999999") is None
         assert graph.get_node("GO:0005524") is not None
 
+    def test_filtered_graph_resolves_ancestors_of_dropped_terms(self, builder):
+        """Termos descartados pelo filtro ainda devem ter seus ancestrais
+        (que sobreviveram ao filtro) resolvidos via o grafo completo anexado."""
+        all_terms = ["GO:0005524", "GO:0005488", "GO:0003674", "GO:9999999"]
+        counts = {
+            "GO:0005524": 10,
+            "GO:0005488": 12,
+            "GO:0003674": 15,
+            "GO:9999999": 2,
+        }
+        graph = builder.build(all_terms, term_counts=counts, min_support=5)
+
+        ancestors = graph.get_ancestors("GO:9999999")
+        assert "GO:0005488" in ancestors
+        assert "GO:0003674" in ancestors
+
     def test_preserves_ancestors_of_kept_terms(self, builder):
         all_terms = ["GO:0005524", "GO:0005488", "GO:0003674"]
         counts = {
