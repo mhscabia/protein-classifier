@@ -41,7 +41,7 @@ class TrainClassifiersUseCase:
 
         feature_cols = [
             c for c in data.columns
-            if c.startswith(("seq_length", "molecular_weight", "aa_"))
+            if c.startswith(("seq_length", "molecular_weight", "aa_", "esm_"))
         ]
 
         X = data[feature_cols]
