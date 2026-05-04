@@ -9,6 +9,16 @@ model:
   test_size: 0.2
   persist_path: "data/models/"
 
+hierarchy:
+  min_term_support: 20
+
+features:
+  use_esm: true
+  esm_model: "facebook/esm2_t6_8M_UR50D"
+  esm_cache_path: "data/processed/esm_embeddings.npz"
+  esm_max_length: 1022
+  esm_batch_size: 32
+
 output:
   path: "data/output/"
 

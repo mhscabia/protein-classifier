@@ -16,18 +16,72 @@ class GODagBuilder(HierarchyBuilder):
         self._config = config or load_config()
         self._raw_path = Path(self._config["data"]["raw_path"])
         self._namespace = self._config["data"]["go_namespace"]
+        self._min_term_support = int(
+            self._config.get("hierarchy", {}).get("min_term_support", 0)
+        )
 
-    def build(self, go_terms: list[str]) -> HierarchyGraph:
+    def build(
+        self,
+        go_terms: list[str],
+        term_counts: dict[str, int] | None = None,
+        min_support: int | None = None,
+    ) -> HierarchyGraph:
         terms_data = self._load_terms()
         graph = self._build_graph(terms_data)
         graph = self._filter_relevant(graph, go_terms)
 
+        threshold = self._min_term_support if min_support is None else int(min_support)
+        if threshold > 0 and term_counts is not None:
+            graph = self._filter_by_support(graph, term_counts, threshold)
+
         logger.info(
-            "DAG construido: %d nos para %d termos de entrada",
+            "DAG construido: %d nos para %d termos de entrada (min_support=%d)",
             len(graph),
             len(go_terms),
+            threshold if term_counts is not None else 0,
         )
         return graph
+
+    def _filter_by_support(
+        self,
+        graph: HierarchyGraph,
+        term_counts: dict[str, int],
+        min_support: int,
+    ) -> HierarchyGraph:
+        """Mantem termos com >= min_support proteinas + ancestrais."""
+        keep_ids: set[str] = set()
+        for term_id in graph.get_all_node_ids():
+            if term_counts.get(term_id, 0) >= min_support:
+                keep_ids.add(term_id)
+                keep_ids.update(graph.get_ancestors(term_id))
+
+        if not keep_ids:
+            logger.warning(
+                "Filtro min_support=%d removeu todos os termos — DAG vazio",
+                min_support,
+            )
+            return HierarchyGraph()
+
+        filtered = HierarchyGraph()
+        for term_id in keep_ids:
+            original = graph.get_node(term_id)
+            if original is None:
+                continue
+            filtered.add_node(
+                FunctionNode(
+                    term_id=original.term_id,
+                    name=original.name,
+                    parent_ids=[p for p in original.parent_ids if p in keep_ids],
+                    children_ids=[c for c in original.children_ids if c in keep_ids],
+                )
+            )
+        logger.info(
+            "Filtro por suporte: %d -> %d nos (min_support=%d)",
+            len(graph),
+            len(filtered),
+            min_support,
+        )
+        return filtered
 
     def _load_terms(self) -> list[dict]:
         """Carrega go_terms.json gerado pelo GOClient (Modulo 1)."""
