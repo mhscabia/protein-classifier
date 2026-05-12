@@ -9,6 +9,7 @@ from src.shared import presenter
 from src.infrastructure.data_sources.uniprot_client import UniProtClient
 from src.infrastructure.data_sources.go_client import GOClient
 from src.infrastructure.preprocessing.pandas_preprocessor import PandasPreprocessor
+from src.infrastructure.preprocessing.esm_embedder import ESMEmbedder
 from src.infrastructure.hierarchy.go_dag_builder import GODagBuilder
 from src.infrastructure.models.lcn_classifier import LCNClassifier
 from src.infrastructure.evaluation.hierarchical_metrics import (
@@ -20,6 +21,7 @@ from src.infrastructure.visualization.result_visualizer import (
     plot_metrics_comparison,
 )
 from src.infrastructure.persistence.model_persistence import (
+    is_compatible,
     load_model,
     model_exists,
     save_model,
@@ -31,6 +33,18 @@ from src.application.use_cases.evaluate_classifiers import EvaluateClassifiersUs
 from src.application.use_cases.classify_protein import ClassifyProteinUseCase
 
 
+def _build_embedder(config: dict):
+    features_cfg = config.get("features", {}) or {}
+    if not features_cfg.get("use_esm", False):
+        return None
+    return ESMEmbedder(
+        model_name=features_cfg["esm_model"],
+        cache_path=features_cfg.get("esm_cache_path"),
+        max_length=features_cfg.get("esm_max_length", 1022),
+        batch_size=features_cfg.get("esm_batch_size", 32),
+    )
+
+
 def main() -> None:
     config = load_config("config.yaml")
 
@@ -39,11 +53,17 @@ def main() -> None:
     logger = get_logger(__name__)
 
     mode = config.get("pipeline", {}).get("mode", "auto")
+    use_esm = bool(config.get("features", {}).get("use_esm", False))
 
-    logger.info("Protein Classifier — iniciando pipeline  [modo: %s]", mode)
+    logger.info(
+        "Protein Classifier — iniciando pipeline  [modo: %s, use_esm=%s]",
+        mode,
+        use_esm,
+    )
 
     # === Módulos 1-3: Aquisição, Pré-processamento, Hierarquia ===
-    preprocessor = PandasPreprocessor(config)
+    embedder = _build_embedder(config)
+    preprocessor = PandasPreprocessor(config, embedder=embedder)
     data_pipeline = PrepareDataPipeline(
         data_source=UniProtClient(config),
         preprocessor=preprocessor,
@@ -65,7 +85,14 @@ def main() -> None:
     lcn_metrics = None
     lcn_flat = None
 
-    if model_exists(persist_path):
+    cache_compatible = is_compatible(persist_path, use_esm=use_esm)
+    if model_exists(persist_path) and not cache_compatible:
+        logger.warning(
+            "Modelo persistido incompativel com use_esm=%s — sera retreinado",
+            use_esm,
+        )
+
+    if cache_compatible:
         logger.info("Modelo encontrado em disco — pulando treinamento")
         lcn, _saved_scaler, _saved_meta = load_model(persist_path)
         presenter.pause_if_interactive(mode, "Módulo 6")
@@ -92,6 +119,11 @@ def main() -> None:
 
         presenter.print_metrics_table([eval_result], {"LCN": lcn_flat})
 
+        feature_dim = (
+            preprocessor.scaler.mean_.shape[0]
+            if preprocessor.scaler is not None
+            else None
+        )
         save_model(
             lcn,
             preprocessor.scaler,
@@ -99,6 +131,8 @@ def main() -> None:
                 "classifier_name": "LCN",
                 "uniprot_limit": config["data"]["uniprot_limit"],
                 "date": datetime.date.today().isoformat(),
+                "use_esm": use_esm,
+                "feature_dim": feature_dim,
             },
             persist_path,
         )
@@ -106,10 +140,12 @@ def main() -> None:
         presenter.pause_if_interactive(mode, "Módulo 6")
 
     # === Módulo 6: Previsão e Visualização ===
-    example_sequence = proteins["sequence"].iloc[0]
+    example_sequence = proteins["sequence"].iloc[7]
 
     pipeline = InferencePipeline(
-        classifier=lcn, scaler=preprocessor.scaler,
+        classifier=lcn,
+        scaler=preprocessor.scaler,
+        embedder=embedder,
     )
     classify_uc = ClassifyProteinUseCase(pipeline)
     predicted_terms = classify_uc.execute(example_sequence)

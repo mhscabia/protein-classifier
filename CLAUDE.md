@@ -32,12 +32,12 @@ protein_classifier/
 │   │
 │   ├── infrastructure/
 │   │   ├── data_sources/        ← M1: UniProtClient, GOClient
-│   │   ├── preprocessing/       ← M2: PandasPreprocessor
-│   │   ├── hierarchy/           ← M3: GODagBuilder
-│   │   ├── models/              ← M4: RF, SVM, LCN (a implementar)
+│   │   ├── preprocessing/       ← M2: PandasPreprocessor + ESMEmbedder
+│   │   ├── hierarchy/           ← M3: GODagBuilder (com filtro por suporte)
+│   │   ├── models/              ← M4: LCN
 │   │   ├── evaluation/          ← M5: HierarchicalMetricsEvaluator
 │   │   ├── prediction/          ← M6: InferencePipeline
-│   │   ├── persistence/         ← NOVO: ModelPersistence (a implementar)
+│   │   ├── persistence/         ← ModelPersistence
 │   │   └── visualization/       ← ResultVisualizer
 │   │
 │   └── shared/                  ← logger, config_loader, presenter
@@ -48,8 +48,8 @@ protein_classifier/
 │
 └── data/
     ├── raw/                     ← proteins.csv, go_terms.json
-    ├── processed/               ← proteins_clean.csv
-    ├── models/                  ← NOVO: modelos persistidos (gitignored)
+    ├── processed/               ← proteins_clean.csv, esm_embeddings.npz
+    ├── models/                  ← modelos persistidos (gitignored)
     └── output/                  ← Gráficos gerados (gitignored)
 ```
 
@@ -66,171 +66,93 @@ infrastructure → application → domain
 - `uniprot_client.py` — busca proteínas da Swiss-Prot via API REST com paginação
 - `go_client.py` — coleta termos GO e ancestrais via QuickGO em lotes de 25
 - Saída: `data/raw/proteins.csv` e `data/raw/go_terms.json`
-- `go_terms.json` só é rebuscado se não existir em disco
 
 ### M2 — Pré-processamento ✅
-- `pandas_preprocessor.py`
-- `clean()`: remove nulos, vazios, duplicatas, sequências com caracteres inválidos
-- `normalize()`: extrai 22 features numéricas + aplica `StandardScaler`
-- Features: `seq_length`, `molecular_weight`, `aa_A`...`aa_Y` (20 aminoácidos)
-- O scaler deve ser salvo junto com o modelo — essencial para inferência correta
+- `pandas_preprocessor.py` — limpeza + normalização
+- Dois regimes de features (controlado por `features.use_esm` na config):
+  - **Manual (22 dims):** `seq_length`, `molecular_weight`, `aa_A`...`aa_Y`
+  - **ESM-2 (320 dims):** embedding contextual via `esm_embedder.py`
+- `StandardScaler` aplicado em ambos e persistido junto ao modelo
 
 ### M3 — Hierarquia DAG ✅
 - `go_dag_builder.py`
 - Lê `go_terms.json`, monta `HierarchyGraph` com `FunctionNode`
-- `get_ancestors(term_id)` é o método central — usado em M4, M5 e M6
-- Filtra apenas termos relevantes às proteínas do dataset + seus ancestrais
+- Filtra termos relevantes (presentes nas proteínas) + ancestrais
+- Filtro adicional opcional por `min_term_support` — remove termos com poucas
+  proteínas anotadas; ancestrais dos termos mantidos são sempre preservados
 
-### M4 — Treinamento ✅ (RF + SVM)
-- `random_forest_classifier.py` — 100 árvores, multi-label com `MultiLabelBinarizer`
-- `svm_classifier.py` — `OneVsRestClassifier` com `SVC(kernel="rbf")`
-- Ambos propagam ancestrais nos labels antes de treinar
-- Ambos propagam ancestrais nas predições para garantir consistência hierárquica
+### M4 — Treinamento ✅ (LCN-only)
+- `lcn_classifier.py` — RF binário por nó, travessia top-down BFS
+- `_get_feature_columns()` reconhece prefixos manuais e `esm_`
+- Propaga ancestrais nos labels antes de treinar e nas predições
 
 ### M5 — Avaliação ✅
 - `hierarchical_metrics.py`
 - `evaluate()`: hP, hR, hF com expansão de ancestrais antes de comparar
-- `evaluate_flat()`: mesmas métricas sem expansão — baseline de comparação
-- hP = Σ|pred∩true| / Σ|pred| ; hR = Σ|pred∩true| / Σ|true| ; hF = média harmônica
+- `evaluate_flat()`: mesmas métricas sem expansão — baseline
+- hP = Σ|pred∩true|/Σ|pred| ; hR = Σ|pred∩true|/Σ|true| ; hF = média harmônica
 
 ### M6 — Inferência e Visualização ✅
-- `inference_pipeline.py` — extrai 22 features de sequência nova, aplica scaler, classifica
+- `inference_pipeline.py` — extrai features (manual ou ESM), aplica scaler, classifica
 - `result_visualizer.py` — gera `dag_predictions.png` e `metrics_comparison.png`
 
-### Resultados do E2E (500 proteínas, seed=42)
+### Persistência ✅
+- `model_persistence.py` — salva classificador + scaler + metadata
+- Metadata inclui `use_esm` e `feature_dim` para validar consistência no load
+- `main.py` invalida cache automaticamente se o regime de features mudou
 
-| Classificador | hP | hR | hF | flat_F |
-|---|---|---|---|---|
-| SVM ⭐ | 0.8785 | 0.2119 | **0.3415** | 0.0315 |
-| Random Forest | 0.8884 | 0.2021 | 0.3294 | 0.0326 |
-| LCN | 0.8646 | 0.1934 | 0.3160 | 0.0330 |
+### Resultados (LCN, baseline 22 features, 10000 proteínas, seed=42)
 
-Ganho hierárquico vs flat: ~10x.
+| Configuração | hP | hR | hF | flat_F | Nós DAG |
+|---|---|---|---|---|---|
+| Baseline (22 features, sem filtro) | 0.8384 | 0.2196 | 0.3480 | 0.0377 | ~600 |
+| + filtro min_support=20 | — | — | — | — | — |
+| + ESM-2 (sem filtro) | — | — | — | — | — |
+| + ESM-2 + filtro min_support=20 | — | — | — | — | — |
 
----
-
-## O QUE FALTA IMPLEMENTAR
-
-### 1 — LCN (Local Classifier per Node) ⬜
-
-Classificador hierárquico puro. Principal evolução em relação ao protótipo.
-
-**Problema que resolve:** RF e SVM são classificadores flat — a hierarquia aparece
-só no pré-processamento e nas métricas, não no algoritmo. O LCN incorpora a
-hierarquia diretamente no modelo.
-
-**Conceito:** um classificador binário por nó do DAG. Cada um responde
-"essa proteína pertence a este nó ou não?". Predição top-down — começa na raiz,
-desce pela hierarquia, para quando o classificador do nó retorna negativo.
-
-**Por que melhora o recall:** divide o problema de 615 classes em subproblemas
-menores e mais balanceados. Cada nó treina apenas com proteínas relevantes
-para aquele ramo.
-
-**Arquivo:** `src/infrastructure/models/lcn_classifier.py`
-
-**Interface:** `HierarchicalClassifier` — métodos `train()` e `predict()`
-
-**Lógica do `train()`:**
-```
-Para cada nó do DAG:
-    positivos = proteínas que têm esse termo GO
-    negativos = proteínas que não têm esse termo GO
-    treinar RandomForestClassifier binário para esse nó
-    armazenar classificador indexado por term_id
-```
-
-**Lógica do `predict()`:**
-```
-Para cada proteína:
-    fila = [raiz do DAG]
-    preditos = set()
-    Para cada nó na fila:
-        se classificador[nó].predict(X) == positivo:
-            preditos.add(nó.term_id)
-            fila.extend(nó.children_ids)
-    retornar preditos
-```
-
-**Classificador binário por nó:**
-```python
-RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
-```
-
-**Integração no `main.py`:**
-```python
-classifiers = {
-    "RandomForest": RandomForestHierarchicalClassifier(config),
-    "SVM": SVMHierarchicalClassifier(config),
-    "LCN": LCNClassifier(config),
-}
-```
-
-**Teste:** `tests/unit/test_lcn_classifier.py`
+**Diagnóstico do recall baixo (baseline):**
+- `hP` alta (~0.84): predições tendem a estar corretas.
+- `hR` baixo (~0.22): modelo conservador.
+- **Causa raiz:** 22 features de composição simples não carregam informação
+  contextual/estrutural; com ~600 nós, a maioria dos RFs binários treina com
+  poucos positivos e aprende a sempre prever negativo.
+- **Solução (Bloco E):** representação melhor (ESM-2) + redução do espaço de classes.
 
 ---
 
-### 2 — Persistência do modelo em disco ⬜
+## BLOCO E — ESM-2 + Simplificação GO (em execução)
 
-**Problema que resolve:** atualmente o modelo retreina a cada execução.
-Com datasets maiores isso se torna inviável.
+Duas alavancas independentes — efeitos somam.
 
-**Arquivo:** `src/infrastructure/persistence/model_persistence.py`
+### Filtro do DAG por suporte mínimo (`min_term_support`)
+- Remove termos GO com menos que N proteínas anotadas no dataset.
+- Ancestrais dos termos mantidos são sempre preservados.
+- Configurado em `hierarchy.min_term_support`.
 
-**O que salvar:** classificador treinado + `StandardScaler` do M2 + metadados
-(data de treino, `uniprot_limit`, métricas obtidas)
-
-**Biblioteca:** `joblib` — já disponível via scikit-learn
-
-**Interface:**
-```python
-def save_model(classifier, scaler, metadata: dict, path: str) -> None: ...
-def load_model(path: str) -> tuple: ...
-def model_exists(path: str) -> bool: ...
-```
-
-**Parâmetro no `config.yaml`:**
-```yaml
-model:
-  persist_path: "data/models/"
-```
-
-**Lógica no `main.py`:**
-```
-Se model_exists(persist_path):
-    classifier, scaler = load_model(persist_path)
-    pular M4
-Senão:
-    executar M4 normalmente
-    save_model(classifier, scaler, metadata, persist_path)
-```
-
-**`.gitignore`:** adicionar `data/models/`
-
-**Teste:** `tests/unit/test_model_persistence.py`
-
----
-
-### 3 — Aumentar volume de dados ⬜
-
-Após persistência implementada, aumentar `uniprot_limit` progressivamente.
-
-- Atual: 500 proteínas
-- Meta: 2000–5000 (testar escalabilidade antes de ir além)
-- Teto da Swiss-Prot: ~570 mil proteínas revisadas
+### ESM-2 — Embeddings via Protein Language Model
+- Modelo: `facebook/esm2_t6_8M_UR50D` (8M parâmetros, 320 dims, CPU-friendly).
+- O embedding **não prediz função** — é extrator de features. O LCN continua
+  sendo o classificador hierárquico.
+- Sequências truncadas em `esm_max_length=1022` tokens.
+- Cache em `data/processed/esm_embeddings.npz` com `protein_ids` alinhados;
+  recomputa quando o conjunto de IDs muda.
+- Flag `features.use_esm` controla o regime; `false` mantém retrocompatibilidade.
+- Primeira execução baixa ~30MB do HuggingFace — requer conexão.
 
 ---
 
 ## CONVENÇÕES — OBRIGATÓRIAS
 
 - `snake_case` funções/variáveis, `PascalCase` classes
-- Responsabilidade única por função — questionar se passar de 20 linhas
-- Sem comentários óbvios — o código se explica pelos nomes
-- DRY — nunca duplicar lógica
+- Responsabilidade única por função
+- Sem comentários óbvios
+- DRY
 - Seed `42` em todo código que usa aleatoriedade
-- Todos os parâmetros no `config.yaml`, nunca hardcoded no código
+- Todos os parâmetros no `config.yaml`, nunca hardcoded
 - Todo módulo novo em `infrastructure/` deve ter teste em `tests/unit/`
 - Dependências sempre apontam para dentro: `infrastructure → application → domain`
+- `use_esm: false` deve sempre funcionar — retrocompatibilidade obrigatória
+- Trocar `use_esm` invalida o modelo persistido — `main.py` cuida disso
 
 ---
 
@@ -239,14 +161,16 @@ Após persistência implementada, aumentar `uniprot_limit` progressivamente.
 | Biblioteca | Uso |
 |---|---|
 | pandas | M2, M3 |
-| numpy | M5 |
+| numpy | M2, M5 |
 | scikit-learn | M4, M5 |
 | matplotlib | M5, M6 |
 | requests | M1 |
 | pyyaml | shared |
 | pytest | tests |
 | networkx | M6 visualização |
-| joblib | persistence (NOVO) — via scikit-learn |
+| joblib | persistence |
+| transformers | M2 — ESM embeddings |
+| torch | M2 — ESM embeddings (CPU) |
 
 **⚠️ Não adicionar bibliotecas fora desta lista sem aprovação explícita.**
 
@@ -256,10 +180,13 @@ Após persistência implementada, aumentar `uniprot_limit` progressivamente.
 
 | Risco | Sinal | Ação |
 |---|---|---|
-| LCN lento | Treino > 10 min para 500 proteínas | Limitar profundidade do DAG ou reduzir estimadores por nó |
-| Modelo desatualizado | Dataset mudou, modelo não retreinou | Salvar hash do `proteins.csv` com o modelo |
-| Recall do LCN não melhora | hR < 0.21 | Revisar balanceamento positivo/negativo por nó |
-| Complexidade > O(n²) | Loops aninhados sobre dataset | Sinalizar e propor alternativa |
+| ESM lento em CPU | > 5 min para 500 proteínas | Reduzir `esm_batch_size` |
+| Cache ESM desatualizado | Dataset mudou, cache não | `protein_ids` invalidam automaticamente |
+| Filtro remove classes importantes | DAG com < 10 nós | Reduzir `min_term_support` para 10 |
+| Recall não melhora com ESM | hR < 0.25 | Combinar com filtro; tentar modelo maior |
+| Modelo com features incompatíveis | Erro de shape no load | Metadata `use_esm`/`feature_dim` invalida cache |
+| Sequências > 1022 aa | ESM trunca silenciosamente | Esperado; configurável |
+| Download ESM falha (offline) | Erro do HuggingFace | Pré-baixar modelo ou rodar online primeiro |
 
 ---
 
@@ -274,7 +201,8 @@ Após persistência implementada, aumentar `uniprot_limit` progressivamente.
 | M5 — Avaliação hierárquica | ✅ |
 | M6 — Inferência e visualização | ✅ |
 | Persistência do modelo | ✅ |
-| Aumentar volume de dados | ⬜ |
+| Bloco E — Filtro GO min_support | 🔄 |
+| Bloco E — ESM-2 embeddings | 🔄 |
 
 > Branch `archive/all-classifiers` preserva a versão com RF + SVM + LCN para referência histórica.
 
@@ -282,39 +210,26 @@ Após persistência implementada, aumentar `uniprot_limit` progressivamente.
 
 ## CHECKLIST DE IMPLEMENTAÇÃO
 
-> Atualizar checkboxes conforme tarefas são concluídas.
-> Ao iniciar uma sessão, ler esta seção para saber por onde continuar.
-> Formato: `- [x]` = concluído, `- [ ]` = pendente, `- [~]` = em andamento.
+### Blocos A–D — concluídos
+- [x] TASK-01..25 — LCN, persistência, escala, refatoração LCN-only
 
-### Bloco A — LCN (Local Classifier per Node)
-- [x] TASK-01 — Criar `src/infrastructure/models/lcn_classifier.py` com classe `LCNClassifier` e `__init__`
-- [x] TASK-02 — Implementar `train()` no LCNClassifier (loop por nó do DAG, RF binário por nó)
-- [x] TASK-03 — Implementar `predict()` no LCNClassifier (travessia top-down, fila BFS)
-- [x] TASK-04 — Implementar `_augment_with_ancestors()` (reutilizar padrão do RF/SVM)
-- [x] TASK-05 — Criar `tests/unit/test_lcn_classifier.py` com fixtures e 3 testes
-- [x] TASK-06 — Adicionar `LCNClassifier` ao dict `classifiers` em `main.py`
-- [x] TASK-07 — Executar `pytest tests/unit/test_lcn_classifier.py` e corrigir falhas
-- [x] TASK-08 — Executar pipeline completo e registrar métricas do LCN na tabela acima
-
-### Bloco B — Persistência de modelo
-- [x] TASK-09 — Criar diretório `src/infrastructure/persistence/` + `__init__.py`
-- [x] TASK-10 — Criar `model_persistence.py` com `save_model()`, `load_model()`, `model_exists()`
-- [x] TASK-11 — Adicionar `persist_path: "data/models/"` em `config.yaml` (dentro de `model:`)
-- [x] TASK-12 — Adicionar `data/models/` ao `.gitignore`
-- [x] TASK-13 — Criar `tests/unit/test_model_persistence.py` com 4 testes
-- [x] TASK-14 — Integrar persistência em `main.py`: checar, carregar ou salvar após treino
-- [x] TASK-15 — Executar `pytest tests/unit/test_model_persistence.py` e corrigir falhas
-- [x] TASK-16 — Executar pipeline completo validando que segunda execução pula treino
-
-### Bloco C — Escalar dados
-- [x] TASK-17 — Alterar `uniprot_limit` para `2000` em `config.yaml`
-- [x] TASK-18 — Deletar `data/models/` e `data/raw/` para forçar re-fetch
-- [x] TASK-19 — Executar pipeline completo com 2000 proteínas e registrar métricas
-- [x] TASK-20 — Atualizar tabela de resultados no CLAUDE.md com novos números
-
-### Bloco D — Refatoração LCN-only
-- [x] TASK-21 — Criar branch `archive/all-classifiers` com RF + SVM + LCN preservados
-- [x] TASK-22 — Remover RF e SVM do `main.py` (pipeline LCN-only)
-- [x] TASK-23 — Atualizar CLAUDE.md (STATUS + nota sobre archive branch)
-- [x] TASK-24 — Executar `pytest tests/unit/` e confirmar sem regressões
-- [x] TASK-25 — Executar `python main.py` e confirmar pipeline LCN-only funciona
+### Bloco E — PLM + Simplificação GO
+- [ ] TASK-26 — `hierarchy.min_term_support: 20` em `config.yaml`
+- [ ] TASK-27 — `_filter_by_support()` em `go_dag_builder.py`
+- [ ] TASK-28 — Integrar filtro no `build()`
+- [ ] TASK-29 — `tests/unit/test_go_filter.py` (2 testes)
+- [ ] TASK-30 — Pipeline com filtro: registrar nº de nós e métricas
+- [ ] TASK-31 — Atualizar tabela
+- [ ] TASK-32 — `transformers`/`torch` em `requirements.txt`
+- [ ] TASK-33 — Bloco `features:` em `config.yaml`
+- [ ] TASK-34 — `esm_embedder.py`
+- [ ] TASK-35 — Adaptar `pandas_preprocessor.py` (embedder no construtor)
+- [ ] TASK-36 — Adaptar `inference_pipeline.py` (embedder opcional)
+- [ ] TASK-37 — Estender `FEATURE_PREFIX` no LCN com `esm_`
+- [ ] TASK-38 — `model_persistence.py` registra `use_esm`/`feature_dim`
+- [ ] TASK-39 — `main.py` instancia ESM e invalida cache se regime mudou
+- [ ] TASK-40 — `tests/unit/test_esm_embedder.py` (4 testes)
+- [ ] TASK-41 — `pytest tests/unit/` verde
+- [ ] TASK-42 — Pipeline com `use_esm=true` + filtro
+- [ ] TASK-43 — Confirmar retrocompatibilidade `use_esm=false`
+- [ ] TASK-44 — Atualizar tabela e STATUS

@@ -47,10 +47,14 @@ def _molecular_weight(sequence: str) -> float:
 class PandasPreprocessor(ProteinPreprocessor):
     """Limpeza e extração de features numéricas a partir de proteínas."""
 
-    def __init__(self, config: dict | None = None):
+    def __init__(self, config: dict | None = None, embedder=None):
         self._config = config or load_config()
         self._processed_path = Path(self._config["data"]["processed_path"])
         self._scaler: StandardScaler | None = None
+        self._embedder = embedder
+        self._use_esm = bool(
+            self._config.get("features", {}).get("use_esm", False)
+        ) and embedder is not None
 
     @property
     def scaler(self) -> StandardScaler | None:
@@ -96,15 +100,10 @@ class PandasPreprocessor(ProteinPreprocessor):
     def normalize(self, data: pd.DataFrame) -> pd.DataFrame:
         df = data.copy()
 
-        df["seq_length"] = df["sequence"].apply(len)
-        df["molecular_weight"] = df["sequence"].apply(_molecular_weight)
-
-        composition_df = df["sequence"].apply(_composition).apply(pd.Series)
-        df = pd.concat([df, composition_df], axis=1)
-
-        feature_cols = ["seq_length", "molecular_weight"] + [
-            f"aa_{aa}" for aa in AMINO_ACIDS
-        ]
+        if self._use_esm:
+            feature_cols = self._add_esm_features(df)
+        else:
+            feature_cols = self._add_manual_features(df)
 
         self._scaler = StandardScaler()
         df[feature_cols] = self._scaler.fit_transform(df[feature_cols])
@@ -115,3 +114,24 @@ class PandasPreprocessor(ProteinPreprocessor):
         logger.info("Salvas %d proteínas processadas em %s", len(df), output_path)
 
         return df
+
+    def _add_manual_features(self, df: pd.DataFrame) -> list[str]:
+        df["seq_length"] = df["sequence"].apply(len)
+        df["molecular_weight"] = df["sequence"].apply(_molecular_weight)
+
+        composition_df = df["sequence"].apply(_composition).apply(pd.Series)
+        for col in composition_df.columns:
+            df[col] = composition_df[col]
+
+        return ["seq_length", "molecular_weight"] + [
+            f"aa_{aa}" for aa in AMINO_ACIDS
+        ]
+
+    def _add_esm_features(self, df: pd.DataFrame) -> list[str]:
+        sequences = df["sequence"].astype(str).tolist()
+        protein_ids = df["protein_id"].astype(str).tolist()
+        embeddings = self._embedder.embed(sequences, protein_ids=protein_ids)
+        feature_cols = [f"esm_{i}" for i in range(embeddings.shape[1])]
+        for i, col in enumerate(feature_cols):
+            df[col] = embeddings[:, i]
+        return feature_cols

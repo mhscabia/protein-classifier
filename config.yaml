@@ -1,13 +1,23 @@
 data:
   raw_path: "data/raw/"
   processed_path: "data/processed/"
-  uniprot_limit: 500
+  uniprot_limit: 5000
   go_namespace: "molecular_function"
 
 model:
   random_seed: 42
   test_size: 0.2
   persist_path: "data/models/"
+
+hierarchy:
+  min_term_support: 20
+
+features:
+  use_esm: true
+  esm_model: "facebook/esm2_t6_8M_UR50D"
+  esm_cache_path: "data/processed/esm_embeddings.npz"
+  esm_max_length: 1022
+  esm_batch_size: 32
 
 output:
   path: "data/output/"
@@ -16,4 +26,4 @@ logging:
   level: "INFO"
 
 pipeline:
-  mode: "interactive"   # "auto" (sem pausas) ou "interactive" (pausa entre módulos)
+  mode: "auto"   # "auto" (sem pausas) ou "interactive" (pausa entre módulos)

@@ -56,8 +56,9 @@ class PrepareDataPipeline:
         # Modulo 3: construcao da hierarquia
         logger.info("=== Modulo 3: Construcao da hierarquia ===")
         all_go_terms = self._extract_go_terms(processed)
+        term_counts = self._count_term_support(processed)
         self._ensure_go_terms_fetched(all_go_terms)
-        hierarchy = self._hierarchy_builder.build(all_go_terms)
+        hierarchy = self._hierarchy_builder.build(all_go_terms, term_counts=term_counts)
         logger.info("Hierarquia OK: %d nos", len(hierarchy))
 
         return PipelineResult(proteins=processed, hierarchy=hierarchy)
@@ -84,3 +85,16 @@ class PrepareDataPipeline:
                 if term:
                     all_terms.add(term)
         return sorted(all_terms)
+
+    @staticmethod
+    def _count_term_support(data: pd.DataFrame) -> dict[str, int]:
+        """Conta quantas proteinas tem cada termo GO (sem expansao de ancestrais)."""
+        counts: dict[str, int] = {}
+        for terms_str in data["go_terms"]:
+            seen: set[str] = set()
+            for term in str(terms_str).split(";"):
+                term = term.strip()
+                if term and term not in seen:
+                    seen.add(term)
+                    counts[term] = counts.get(term, 0) + 1
+        return counts
