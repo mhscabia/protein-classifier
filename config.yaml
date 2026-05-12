@@ -1,7 +1,7 @@
 data:
   raw_path: "data/raw/"
   processed_path: "data/processed/"
-  uniprot_limit: 500
+  uniprot_limit: 5000
   go_namespace: "molecular_function"
 
 model:
@@ -26,4 +26,4 @@ logging:
   level: "INFO"
 
 pipeline:
-  mode: "interactive"   # "auto" (sem pausas) ou "interactive" (pausa entre módulos)
+  mode: "auto"   # "auto" (sem pausas) ou "interactive" (pausa entre módulos)

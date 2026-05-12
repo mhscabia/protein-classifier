@@ -140,7 +140,7 @@ def main() -> None:
         presenter.pause_if_interactive(mode, "Módulo 6")
 
     # === Módulo 6: Previsão e Visualização ===
-    example_sequence = proteins["sequence"].iloc[0]
+    example_sequence = proteins["sequence"].iloc[7]
 
     pipeline = InferencePipeline(
         classifier=lcn,
