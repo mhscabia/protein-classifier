@@ -35,8 +35,17 @@ class ESMEmbedder:
         import torch
 
         logger.info("Carregando modelo ESM '%s'...", self._model_name)
-        self._tokenizer = AutoTokenizer.from_pretrained(self._model_name)
-        self._model = AutoModel.from_pretrained(self._model_name)
+        try:
+            self._tokenizer = AutoTokenizer.from_pretrained(
+                self._model_name, local_files_only=True
+            )
+            self._model = AutoModel.from_pretrained(
+                self._model_name, local_files_only=True
+            )
+        except Exception:
+            logger.info("Cache local não encontrado — baixando do HuggingFace...")
+            self._tokenizer = AutoTokenizer.from_pretrained(self._model_name)
+            self._model = AutoModel.from_pretrained(self._model_name)
         self._model.eval()
         self._torch = torch
 

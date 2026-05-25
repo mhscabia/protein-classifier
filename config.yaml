@@ -1,7 +1,7 @@
 data:
   raw_path: "data/raw/"
   processed_path: "data/processed/"
-  uniprot_limit: 5000
+  uniprot_limit: 15000
   go_namespace: "molecular_function"
 
 model:
@@ -27,3 +27,7 @@ logging:
 
 pipeline:
   mode: "auto"   # "auto" (sem pausas) ou "interactive" (pausa entre módulos)
+
+predict:
+  sequence_source: "input"   # "index" (lista de proteínas) ou "input" (colar no terminal)
+  sequence_index: 14
