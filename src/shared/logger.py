@@ -11,4 +11,5 @@ def get_logger(name: str) -> logging.Logger:
         )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
+    logger.propagate = False
     return logger

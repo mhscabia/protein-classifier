@@ -8,7 +8,9 @@
       "Bash(/c/Windows/py main.py)",
       "Read(//c/Users/Matheus/AppData/Local/Programs/**)",
       "Read(//c/Users/Matheus/miniconda3/**)",
-      "Read(//c/Users/Matheus/anaconda3/**)"
+      "Read(//c/Users/Matheus/anaconda3/**)",
+      "Bash(git ls-remote *)",
+      "Bash(git -C \"D:\\\\repositórios\\\\protein-classifier\\\\.claude\\\\worktrees\\\\sweet-jang-0df6b0\" branch --show-current)"
     ]
   }
 }
