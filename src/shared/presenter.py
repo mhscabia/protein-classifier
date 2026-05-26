@@ -66,9 +66,10 @@ def print_prediction_result(
     preview = example_sequence[:40] + ("..." if len(example_sequence) > 40 else "")
     _row("Proteína de exemplo", f"{preview} ({len(example_sequence)} aa)")
     _row("Classificador usado", classifier_name)
+    leaf_terms = hierarchy.get_leaf_predicted(predicted_terms)
     print()
-    print("  Funções biológicas previstas:")
-    for term_id in sorted(predicted_terms):
+    print(f"  Funções biológicas previstas ({len(predicted_terms)} total, {len(leaf_terms)} mais específicos):")
+    for term_id in sorted(leaf_terms):
         node = hierarchy.get_node(term_id)
         name = node.name if node else "—"
         print(f"    {term_id}  —  {name}")
