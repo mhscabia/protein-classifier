@@ -52,6 +52,16 @@ class HierarchyGraph:
 
         return []
 
+    def get_leaf_predicted(self, predicted_terms: set[str]) -> set[str]:
+        """Retorna apenas os termos preditos sem filhos também preditos."""
+        return {
+            t for t in predicted_terms
+            if not any(
+                c in predicted_terms
+                for c in (self.get_node(t).children_ids if self.get_node(t) else [])
+            )
+        }
+
     def get_all_node_ids(self) -> list[str]:
         """Retorna todos os IDs de nos no grafo."""
         return list(self._nodes.keys())
