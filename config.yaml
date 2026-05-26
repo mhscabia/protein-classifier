@@ -22,6 +22,10 @@ features:
 output:
   path: "data/output/"
 
+evaluation:
+  sample_size: 100              # amostras aleatórias do test set
+  random_seed: 42               # mesma seed do split de treino
+
 logging:
   level: "INFO"
 
