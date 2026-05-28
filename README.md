@@ -6,10 +6,7 @@ Pipeline de aprendizado de máquina para classificação hierárquica de funçõ
 
 O sistema recebe uma sequência de aminoácidos e prediz os termos GO (Gene Ontology) associados à sua função molecular. A classificação é feita por um **LCN (Local Classifier per Node)** — um modelo Random Forest binário por nó do DAG — que garante consistência hierárquica propagando predições de ancestrais para descendentes.
 
-Duas formas de representação de features são suportadas:
-
-- **Manual (22 dims):** comprimento, peso molecular e composição de aminoácidos
-- **ESM-2 (320 dims):** embeddings contextuais via modelo de linguagem de proteínas `facebook/esm2_t6_8M_UR50D`
+As features são **embeddings ESM-2 (320 dims)** gerados pelo modelo de linguagem de proteínas `facebook/esm2_t6_8M_UR50D`. O embedding não prediz função — é um extrator de representação contextual; o LCN é o classificador hierárquico.
 
 ## Requisitos
 
@@ -103,13 +100,13 @@ protein_classifier/
 | M5 — Avaliação | hP, hR, hF com expansão hierárquica de ancestrais | ✅ |
 | M6 — Inferência | Predição para sequência avulsa + visualizações | ✅ |
 
-## Métricas (baseline — 22 features, 10000 proteínas)
+## Métricas (ESM-2, 320 features)
 
 | Configuração | hP | hR | hF | Nós DAG |
 |---|---|---|---|---|
-| Baseline (22 features, sem filtro) | 0.8384 | 0.2196 | 0.3480 | ~600 |
+| ESM-2 + filtro `min_term_support=20` | — | — | — | — |
 
-> `hP` alta e `hR` baixo indicam modelo conservador. ESM-2 + filtro `min_term_support` endereçam isso.
+> Execute `python extract_metrics.py` após treinar para preencher a tabela com os resultados do seu ambiente.
 
 ## Modelo no Hugging Face Hub
 
