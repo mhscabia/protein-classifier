@@ -1,5 +1,7 @@
+import argparse
 import datetime
 import logging
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -30,6 +32,7 @@ from src.infrastructure.persistence.model_persistence import (
     save_model,
     try_load_model,
 )
+from src.infrastructure.persistence.hf_downloader import download_models
 
 from src.application.use_cases.prepare_data_pipeline import PrepareDataPipeline
 from src.application.use_cases.train_classifiers import TrainClassifiersUseCase
@@ -60,8 +63,75 @@ def _get_sequence(config: dict, persist_path: str) -> str:
     return proteins["sequence"].iloc[idx]
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Protein Function Classifier — classifica funções biológicas de proteínas usando hierarquia GO.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Exemplos:\n"
+            "  python main.py                  # usa modelo pré-treinado (baixa do HF se necessário)\n"
+            "  python main.py --train          # treina com número de proteínas do config.yaml\n"
+            "  python main.py --train 5000     # treina com 5000 proteínas\n"
+        ),
+    )
+    parser.add_argument(
+        "--train",
+        type=int,
+        nargs="?",
+        const=-1,
+        metavar="N",
+        help=(
+            "Treina o modelo do zero. "
+            "N = número de proteínas a buscar (padrão: valor de data.uniprot_limit no config.yaml)."
+        ),
+    )
+    return parser.parse_args()
+
+
+def _resolve_model(config: dict, persist_path: str, use_esm: bool, logger):
+    """Tenta carregar modelo local; se ausente e sem --train, oferece download do HF."""
+    _loaded = try_load_model(persist_path)
+    if _loaded is not None:
+        lcn_disk, scaler_disk, meta_disk = _loaded
+        compatible = is_compatible_meta(meta_disk, use_esm=use_esm)
+        if not compatible:
+            logger.warning(
+                "Modelo persistido incompatível com use_esm=%s — será retreinado", use_esm
+            )
+        return lcn_disk, scaler_disk, meta_disk, compatible
+
+    hf_repo = config.get("model", {}).get("hf_repo", "")
+    print("\nNenhum modelo encontrado localmente.")
+    answer = input(
+        "Deseja baixar o modelo pré-treinado do Hugging Face Hub? [s/N]: "
+    ).strip().lower()
+
+    if answer == "s":
+        logger.info("Iniciando download do modelo pré-treinado (~2 GB)...")
+        download_models(hf_repo, persist_path)
+        logger.info("Modelos baixados e salvos em %s", persist_path)
+        _loaded = try_load_model(persist_path)
+        if _loaded is not None:
+            lcn_disk, scaler_disk, meta_disk = _loaded
+            compatible = is_compatible_meta(meta_disk, use_esm=use_esm)
+            return lcn_disk, scaler_disk, meta_disk, compatible
+
+    print(
+        "\nPara treinar o modelo localmente, execute:\n"
+        "  python main.py --train          # usa configuração padrão do config.yaml\n"
+        "  python main.py --train 10000    # treina com 10000 proteínas\n"
+    )
+    sys.exit(0)
+
+
 def main() -> None:
+    args = _parse_args()
+    force_train = args.train is not None
+
     config = load_config("config.yaml")
+
+    if force_train and args.train > 0:
+        config["data"]["uniprot_limit"] = args.train
 
     log_level = config.get("logging", {}).get("level", "INFO")
     logging.basicConfig(level=getattr(logging, log_level))
@@ -70,26 +140,29 @@ def main() -> None:
     mode = config.get("pipeline", {}).get("mode", "auto")
     use_esm = bool(config.get("features", {}).get("use_esm", False))
 
-    logger.info(
-        "Protein Classifier — iniciando pipeline  [modo: %s, use_esm=%s]",
-        mode,
-        use_esm,
-    )
+    if force_train:
+        n_proteins = config["data"]["uniprot_limit"]
+        logger.info(
+            "Protein Classifier — modo treinamento  [%d proteínas, use_esm=%s]",
+            n_proteins,
+            use_esm,
+        )
+    else:
+        logger.info(
+            "Protein Classifier — iniciando pipeline  [modo: %s, use_esm=%s]",
+            mode,
+            use_esm,
+        )
 
     persist_path = config.get("model", {}).get("persist_path", "data/models/")
 
-    # Carrega o modelo uma única vez — reutilizado em todos os caminhos
-    _loaded = try_load_model(persist_path)
-    if _loaded is not None:
-        _lcn_disk, _scaler_disk, _meta_disk = _loaded
-        cache_compatible = is_compatible_meta(_meta_disk, use_esm=use_esm)
-        if not cache_compatible:
-            logger.warning(
-                "Modelo persistido incompatível com use_esm=%s — será retreinado", use_esm
-            )
-    else:
+    if force_train:
         _lcn_disk = _scaler_disk = _meta_disk = None
         cache_compatible = False
+    else:
+        _lcn_disk, _scaler_disk, _meta_disk, cache_compatible = _resolve_model(
+            config, persist_path, use_esm, logger
+        )
 
     embedder = _build_embedder(config)
     lcn_metrics = None
@@ -118,7 +191,6 @@ def main() -> None:
             config["data"]["uniprot_limit"], len(proteins), len(hierarchy)
         )
 
-        # Salva o DAG se ainda não existe
         if not hierarchy_exists(persist_path):
             save_hierarchy(hierarchy, persist_path)
             logger.info("DAG salvo em %s", persist_path)
@@ -202,7 +274,6 @@ def main() -> None:
         str(output_dir),
     )
 
-    # Libera o modelo PyTorch antes do garbage collector para evitar lentidão na saída
     if embedder is not None and embedder._model is not None:
         del embedder._model
         del embedder._tokenizer
