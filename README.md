@@ -100,13 +100,13 @@ protein_classifier/
 | M5 — Avaliação | hP, hR, hF com expansão hierárquica de ancestrais | ✅ |
 | M6 — Inferência | Predição para sequência avulsa + visualizações | ✅ |
 
-## Métricas (ESM-2, 320 features)
+## Métricas (ESM-2, 320 features, 15000 proteínas, seed=42)
 
 | Configuração | hP | hR | hF | Nós DAG |
 |---|---|---|---|---|
-| ESM-2 + filtro `min_term_support=20` | — | — | — | — |
+| ESM-2 + `min_term_support=20` | 0.9684 | 0.6622 | 0.7866 | 817 |
 
-> Execute `python extract_metrics.py` após treinar para preencher a tabela com os resultados do seu ambiente.
+> Avaliado em 100 amostras aleatórias do test set (~2396 proteínas). hF hierárquico é **6.26×** maior que flat_F (0.1257), refletindo o crédito parcial dado pela propagação de ancestrais.
 
 ## Modelo no Hugging Face Hub
 
