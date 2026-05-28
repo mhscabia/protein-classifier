@@ -124,7 +124,8 @@ def _resolve_model(
     Retorna (lcn, scaler, meta, compatible, force_train).
     force_train=True indica que o usuário escolheu treinar pelo menu.
     """
-    _loaded = try_load_model(persist_path)
+    with console.status("[cyan]Verificando modelo em cache...[/cyan]", spinner="dots"):
+        _loaded = try_load_model(persist_path)
     if _loaded is not None:
         lcn_disk, scaler_disk, meta_disk = _loaded
         compatible = is_compatible_meta(meta_disk, use_esm=use_esm)
@@ -222,7 +223,8 @@ def main() -> None:
     if not force_train and cache_compatible and hierarchy_exists(persist_path):
         logger.info("Modelo e DAG encontrados em disco — pulando para previsão")
         lcn, scaler = _lcn_disk, _scaler_disk
-        hierarchy = load_hierarchy(persist_path)
+        with console.status("[cyan]Carregando hierarquia GO do cache...[/cyan]", spinner="dots"):
+            hierarchy = load_hierarchy(persist_path)
 
     else:
         # Estado 2 ou 3: precisa do pipeline de dados (M1-M3)

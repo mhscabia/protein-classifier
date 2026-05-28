@@ -41,19 +41,21 @@ class ESMEmbedder:
             return
         from transformers import AutoModel, AutoTokenizer  # lazy import
         import torch
+        from rich.console import Console
 
-        logger.info("Carregando modelo ESM '%s'...", self._model_name)
+        _console = Console()
         try:
-            self._tokenizer = AutoTokenizer.from_pretrained(
-                self._model_name, local_files_only=True
-            )
-            self._model = AutoModel.from_pretrained(
-                self._model_name, local_files_only=True
-            )
+            with _console.status(f"[cyan]Carregando modelo ESM '{self._model_name}' do cache local...[/cyan]", spinner="dots"):
+                self._tokenizer = AutoTokenizer.from_pretrained(
+                    self._model_name, local_files_only=True
+                )
+                self._model = AutoModel.from_pretrained(
+                    self._model_name, local_files_only=True
+                )
         except Exception:
-            logger.info("Cache local não encontrado — baixando do HuggingFace...")
-            self._tokenizer = AutoTokenizer.from_pretrained(self._model_name)
-            self._model = AutoModel.from_pretrained(self._model_name)
+            with _console.status("[cyan]Baixando modelo ESM do HuggingFace...[/cyan]", spinner="dots"):
+                self._tokenizer = AutoTokenizer.from_pretrained(self._model_name)
+                self._model = AutoModel.from_pretrained(self._model_name)
         self._model.eval()
         self._torch = torch
 
