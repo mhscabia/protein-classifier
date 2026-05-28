@@ -2,11 +2,6 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
 from src.domain.interfaces.classifier import HierarchicalClassifier
-from src.infrastructure.preprocessing.pandas_preprocessor import (
-    AMINO_ACIDS,
-    _composition,
-    _molecular_weight,
-)
 from src.shared.logger import get_logger
 
 logger = get_logger(__name__)
@@ -27,10 +22,7 @@ class InferencePipeline:
 
     def predict(self, sequence: str) -> set[str]:
         """Classifica uma sequencia de proteina, retornando termos GO preditos."""
-        if self._embedder is not None:
-            df = self._build_esm_features(sequence)
-        else:
-            df = self._build_manual_features(sequence)
+        df = self._build_esm_features(sequence)
 
         feature_cols = list(df.columns)
         if self._scaler is not None:
@@ -47,17 +39,6 @@ class InferencePipeline:
 
         logger.info("Predicao: %d termos GO identificados", len(terms))
         return terms
-
-    def _build_manual_features(self, sequence: str) -> pd.DataFrame:
-        features: dict[str, float] = {
-            "seq_length": float(len(sequence)),
-            "molecular_weight": _molecular_weight(sequence),
-        }
-        features.update(_composition(sequence))
-        feature_cols = ["seq_length", "molecular_weight"] + [
-            f"aa_{aa}" for aa in AMINO_ACIDS
-        ]
-        return pd.DataFrame([features], columns=feature_cols)
 
     def _build_esm_features(self, sequence: str) -> pd.DataFrame:
         embedding = self._embedder.embed_single(sequence)

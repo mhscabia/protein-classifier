@@ -45,10 +45,8 @@ from src.application.use_cases.classify_protein import ClassifyProteinUseCase
 console = Console()
 
 
-def _build_embedder(config: dict):
+def _build_embedder(config: dict) -> ESMEmbedder:
     features_cfg = config.get("features", {}) or {}
-    if not features_cfg.get("use_esm", False):
-        return None
     return ESMEmbedder(
         model_name=features_cfg["esm_model"],
         cache_path=features_cfg.get("esm_cache_path"),
@@ -116,9 +114,7 @@ def _ask_train_samples(default: int) -> int:
     return result
 
 
-def _resolve_model(
-    config: dict, persist_path: str, use_esm: bool, logger
-) -> tuple:
+def _resolve_model(config: dict, persist_path: str, logger) -> tuple:
     """Carrega modelo local ou guia o usuário pelo menu de opções.
 
     Retorna (lcn, scaler, meta, compatible, force_train).
@@ -128,11 +124,9 @@ def _resolve_model(
         _loaded = try_load_model(persist_path)
     if _loaded is not None:
         lcn_disk, scaler_disk, meta_disk = _loaded
-        compatible = is_compatible_meta(meta_disk, use_esm=use_esm)
+        compatible = is_compatible_meta(meta_disk)
         if not compatible:
-            logger.warning(
-                "Modelo persistido incompatível com use_esm=%s — será retreinado", use_esm
-            )
+            logger.warning("Modelo persistido incompatível com a configuração atual — será retreinado")
         return lcn_disk, scaler_disk, meta_disk, compatible, False
 
     console.print("\n[yellow]Nenhum modelo encontrado localmente.[/yellow]")
@@ -183,7 +177,6 @@ def main() -> None:
     logger = get_logger(__name__)
 
     mode = config.get("pipeline", {}).get("mode", "auto")
-    use_esm = bool(config.get("features", {}).get("use_esm", False))
 
     console.print(
         Panel.fit(
@@ -195,13 +188,9 @@ def main() -> None:
 
     if force_train:
         n_proteins = config["data"]["uniprot_limit"]
-        logger.info(
-            "Modo treinamento: %d proteínas, use_esm=%s",
-            n_proteins,
-            use_esm,
-        )
+        logger.info("Modo treinamento: %d proteínas", n_proteins)
     else:
-        logger.info("Modo: %s  |  use_esm=%s", mode, use_esm)
+        logger.info("Modo: %s", mode)
 
     persist_path = config.get("model", {}).get("persist_path", "data/models/")
 
@@ -210,7 +199,7 @@ def main() -> None:
         cache_compatible = False
     else:
         _lcn_disk, _scaler_disk, _meta_disk, cache_compatible, train_from_menu = _resolve_model(
-            config, persist_path, use_esm, logger
+            config, persist_path, logger
         )
         if train_from_menu:
             force_train = True
@@ -274,7 +263,6 @@ def main() -> None:
                     "classifier_name": "LCN",
                     "uniprot_limit": config["data"]["uniprot_limit"],
                     "date": datetime.date.today().isoformat(),
-                    "use_esm": use_esm,
                     "feature_dim": feature_dim,
                 },
                 persist_path,

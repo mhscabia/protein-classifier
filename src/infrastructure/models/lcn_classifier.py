@@ -9,7 +9,7 @@ from src.shared.logger import get_logger
 
 logger = get_logger(__name__)
 
-FEATURE_PREFIX = ("seq_length", "molecular_weight", "aa_", "esm_")
+FEATURE_PREFIX = ("esm_",)
 
 
 def _get_feature_columns(df: pd.DataFrame) -> list[str]:

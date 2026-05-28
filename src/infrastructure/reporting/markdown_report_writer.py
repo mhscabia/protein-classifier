@@ -37,10 +37,7 @@ class MarkdownReportWriter:
         cfg = r.config_snapshot
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
         classifier_name = r.model_metadata.get("classifier_name", "LCN")
-        features_label = (
-            f"ESM-2 ({r.feature_dim} dims)" if cfg.get("use_esm")
-            else f"manuais ({r.feature_dim} dims)"
-        )
+        features_label = f"ESM-2 ({r.feature_dim} dims)"
         return (
             f"# Relatório de Métricas — Protein Classifier\n"
             f"\n"
@@ -141,7 +138,7 @@ class MarkdownReportWriter:
             (
                 "M2 — Pré-processamento",
                 "Features extraídas e padronizadas (StandardScaler)",
-                f"✓ {r.feature_dim} features ({'ESM-2' if cfg.get('use_esm') else 'manuais'})",
+                f"✓ {r.feature_dim} features ESM-2",
             ),
             (
                 "M3 — Hierarquia DAG",

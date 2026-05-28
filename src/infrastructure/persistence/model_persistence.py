@@ -35,7 +35,6 @@ def hierarchy_exists(path: str) -> bool:
 
 
 def try_load_model(path: str) -> tuple | None:
-    """Carrega o modelo se existir; retorna None caso contrário."""
     if not model_exists(path):
         return None
     try:
@@ -44,13 +43,8 @@ def try_load_model(path: str) -> tuple | None:
         return None
 
 
-def is_compatible_meta(metadata: dict, *, use_esm: bool, feature_dim: int | None = None) -> bool:
-    """Verifica compatibilidade a partir de um metadata já carregado."""
-    saved_use_esm = metadata.get("use_esm")
-    if saved_use_esm is None:
-        return False
-    if bool(saved_use_esm) != bool(use_esm):
-        return False
+def is_compatible_meta(metadata: dict, *, feature_dim: int | None = None) -> bool:
+    """Verifica compatibilidade checando dimensão de features do modelo salvo."""
     if feature_dim is not None:
         saved_dim = metadata.get("feature_dim")
         if saved_dim is not None and int(saved_dim) != int(feature_dim):
@@ -58,10 +52,9 @@ def is_compatible_meta(metadata: dict, *, use_esm: bool, feature_dim: int | None
     return True
 
 
-def is_compatible(path: str, *, use_esm: bool, feature_dim: int | None = None) -> bool:
-    """Verifica se o modelo persistido foi treinado com o mesmo regime de features."""
+def is_compatible(path: str, *, feature_dim: int | None = None) -> bool:
     loaded = try_load_model(path)
     if loaded is None:
         return False
     _, _, metadata = loaded
-    return is_compatible_meta(metadata, use_esm=use_esm, feature_dim=feature_dim)
+    return is_compatible_meta(metadata, feature_dim=feature_dim)

@@ -20,7 +20,7 @@ from src.shared.logger import get_logger
 
 logger = get_logger(__name__)
 
-FEATURE_PREFIXES = ("seq_length", "molecular_weight", "aa_", "esm_")
+FEATURE_PREFIXES = ("esm_",)
 
 
 def _parse_terms(term_str: str) -> set[str]:
@@ -214,7 +214,6 @@ class ExtractMetricsUseCase:
     def _snapshot_config(self) -> dict:
         return {
             "uniprot_limit": self._config["data"]["uniprot_limit"],
-            "use_esm": self._config["features"].get("use_esm", False),
             "esm_model": self._config["features"].get("esm_model"),
             "min_term_support": self._config["hierarchy"].get("min_term_support"),
             "test_size": self._config["model"]["test_size"],

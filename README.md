@@ -58,7 +58,6 @@ Todos os parâmetros ficam em [`config.yaml`](config.yaml). Os mais relevantes:
 | Chave | Padrão | Descrição |
 |-------|--------|-----------|
 | `data.uniprot_limit` | `15000` | Proteínas buscadas no treinamento |
-| `features.use_esm` | `true` | Usa ESM-2 embeddings (melhor recall) |
 | `hierarchy.min_term_support` | `20` | Remove termos GO com menos de N proteínas anotadas |
 | `model.hf_repo` | `mathscabia/protein-classifier` | Repositório HF com modelos pré-treinados |
 | `pipeline.mode` | `auto` | `"interactive"` pausa entre módulos |
