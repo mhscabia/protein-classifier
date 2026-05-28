@@ -157,7 +157,7 @@ def _resolve_model(config: dict, persist_path: str, logger) -> tuple:
     _loaded = try_load_model(persist_path)
     if _loaded is not None:
         lcn_disk, scaler_disk, meta_disk = _loaded
-        compatible = is_compatible_meta(meta_disk, use_esm=use_esm)
+        compatible = is_compatible_meta(meta_disk)
         return lcn_disk, scaler_disk, meta_disk, compatible, False
 
     return None, None, None, False, False

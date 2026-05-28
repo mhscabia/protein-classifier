@@ -115,7 +115,7 @@ class TestFetchAncestors:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "results": ["GO:0005488", "GO:0003674"]
+            "results": [{"ancestors": ["GO:0005488", "GO:0003674"]}]
         }
         mock_response.raise_for_status = MagicMock()
         client._session.get = MagicMock(return_value=mock_response)

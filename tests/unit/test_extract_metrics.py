@@ -90,7 +90,7 @@ class TestSnapshotConfig:
         uc = ExtractMetricsUseCase(base_config)
         snap = uc._snapshot_config()
         assert snap["uniprot_limit"] == 10000
-        assert snap["use_esm"] is True
+        assert snap["esm_model"] == "facebook/esm2_t6_8M_UR50D"
         assert snap["min_term_support"] == 20
         assert snap["random_seed"] == 42
 

@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from src.application.use_cases.classify_protein import ClassifyProteinUseCase
@@ -13,10 +14,15 @@ class FakeClassifier(HierarchicalClassifier):
         return ["GO:0005488;GO:0003674"]
 
 
+class FakeEmbedder:
+    def embed_single(self, sequence: str) -> np.ndarray:
+        return np.zeros(4)
+
+
 class TestClassifyProteinUseCase:
     def test_returns_predicted_terms(self):
         clf = FakeClassifier()
-        pipeline = InferencePipeline(classifier=clf)
+        pipeline = InferencePipeline(classifier=clf, embedder=FakeEmbedder())
         use_case = ClassifyProteinUseCase(pipeline)
 
         result = use_case.execute("ACDEFGHIKLMNPQRSTVWY")
@@ -26,7 +32,7 @@ class TestClassifyProteinUseCase:
 
     def test_contains_expected_terms(self):
         clf = FakeClassifier()
-        pipeline = InferencePipeline(classifier=clf)
+        pipeline = InferencePipeline(classifier=clf, embedder=FakeEmbedder())
         use_case = ClassifyProteinUseCase(pipeline)
 
         result = use_case.execute("ACDEFGHIKLMNPQRSTVWY")
@@ -36,11 +42,10 @@ class TestClassifyProteinUseCase:
 
     def test_delegates_to_pipeline(self):
         clf = FakeClassifier()
-        pipeline = InferencePipeline(classifier=clf)
+        pipeline = InferencePipeline(classifier=clf, embedder=FakeEmbedder())
         use_case = ClassifyProteinUseCase(pipeline)
 
         result1 = use_case.execute("AAA")
         result2 = use_case.execute("CCC")
 
-        # Ambas devem retornar o mesmo resultado (mesmo fake)
         assert result1 == result2
