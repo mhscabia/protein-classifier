@@ -5,6 +5,9 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import questionary
+from rich.console import Console
+from rich.panel import Panel
 
 from src.shared.config_loader import load_config
 from src.shared.logger import get_logger
@@ -39,6 +42,8 @@ from src.application.use_cases.train_classifiers import TrainClassifiersUseCase
 from src.application.use_cases.evaluate_classifiers import EvaluateClassifiersUseCase
 from src.application.use_cases.classify_protein import ClassifyProteinUseCase
 
+console = Console()
+
 
 def _build_embedder(config: dict):
     features_cfg = config.get("features", {}) or {}
@@ -52,11 +57,11 @@ def _build_embedder(config: dict):
     )
 
 
-def _get_sequence(config: dict, persist_path: str) -> str:
+def _get_sequence(config: dict) -> str:
     predict_cfg = config.get("predict", {}) or {}
     source = predict_cfg.get("sequence_source", "index")
     if source == "input":
-        return input("Cole a sequência de aminoácidos: ").strip()
+        return questionary.text("Cole a sequência de aminoácidos:").ask().strip()
     idx = int(predict_cfg.get("sequence_index", 7))
     proteins_csv = Path(config["data"]["processed_path"]) / "proteins_clean.csv"
     proteins = pd.read_csv(proteins_csv)
@@ -88,8 +93,37 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _resolve_model(config: dict, persist_path: str, use_esm: bool, logger):
-    """Tenta carregar modelo local; se ausente e sem --train, oferece download do HF."""
+def _ask_train_samples(default: int) -> int:
+    """Mostra menu para o usuário escolher quantas proteínas treinar."""
+    choices = [
+        questionary.Choice("5.000  (rápido, ~30 min)", value=5000),
+        questionary.Choice("10.000", value=10000),
+        questionary.Choice(f"15.000 (padrão, melhor qualidade)", value=15000),
+        questionary.Choice("Customizado", value=0),
+    ]
+    result = questionary.select(
+        "Quantas proteínas para o treinamento?",
+        choices=choices,
+    ).ask()
+
+    if result == 0:
+        raw = questionary.text(
+            "Digite o número de proteínas:",
+            validate=lambda v: v.isdigit() and int(v) > 0 or "Digite um número inteiro positivo",
+        ).ask()
+        return int(raw)
+
+    return result
+
+
+def _resolve_model(
+    config: dict, persist_path: str, use_esm: bool, logger
+) -> tuple:
+    """Carrega modelo local ou guia o usuário pelo menu de opções.
+
+    Retorna (lcn, scaler, meta, compatible, force_train).
+    force_train=True indica que o usuário escolheu treinar pelo menu.
+    """
     _loaded = try_load_model(persist_path)
     if _loaded is not None:
         lcn_disk, scaler_disk, meta_disk = _loaded
@@ -98,30 +132,40 @@ def _resolve_model(config: dict, persist_path: str, use_esm: bool, logger):
             logger.warning(
                 "Modelo persistido incompatível com use_esm=%s — será retreinado", use_esm
             )
-        return lcn_disk, scaler_disk, meta_disk, compatible
+        return lcn_disk, scaler_disk, meta_disk, compatible, False
+
+    console.print("\n[yellow]Nenhum modelo encontrado localmente.[/yellow]")
+    choice = questionary.select(
+        "O que deseja fazer?",
+        choices=[
+            questionary.Choice("Baixar modelo pré-treinado do Hugging Face Hub  (recomendado)", value="download"),
+            questionary.Choice("Treinar novo modelo", value="train"),
+            questionary.Choice("Sair", value="exit"),
+        ],
+    ).ask()
+
+    if choice == "exit" or choice is None:
+        console.print("Saindo.")
+        sys.exit(0)
+
+    if choice == "train":
+        default_limit = config["data"]["uniprot_limit"]
+        n_proteins = _ask_train_samples(default_limit)
+        config["data"]["uniprot_limit"] = n_proteins
+        return None, None, None, False, True
 
     hf_repo = config.get("model", {}).get("hf_repo", "")
-    print("\nNenhum modelo encontrado localmente.")
-    answer = input(
-        "Deseja baixar o modelo pré-treinado do Hugging Face Hub? [s/N]: "
-    ).strip().lower()
+    logger.info("Iniciando download do modelo pré-treinado (~2 GB)...")
+    download_models(hf_repo, persist_path)
+    logger.info("Modelos salvos em %s", persist_path)
 
-    if answer == "s":
-        logger.info("Iniciando download do modelo pré-treinado (~2 GB)...")
-        download_models(hf_repo, persist_path)
-        logger.info("Modelos baixados e salvos em %s", persist_path)
-        _loaded = try_load_model(persist_path)
-        if _loaded is not None:
-            lcn_disk, scaler_disk, meta_disk = _loaded
-            compatible = is_compatible_meta(meta_disk, use_esm=use_esm)
-            return lcn_disk, scaler_disk, meta_disk, compatible
+    _loaded = try_load_model(persist_path)
+    if _loaded is not None:
+        lcn_disk, scaler_disk, meta_disk = _loaded
+        compatible = is_compatible_meta(meta_disk, use_esm=use_esm)
+        return lcn_disk, scaler_disk, meta_disk, compatible, False
 
-    print(
-        "\nPara treinar o modelo localmente, execute:\n"
-        "  python main.py --train          # usa configuração padrão do config.yaml\n"
-        "  python main.py --train 10000    # treina com 10000 proteínas\n"
-    )
-    sys.exit(0)
+    return None, None, None, False, False
 
 
 def main() -> None:
@@ -134,25 +178,29 @@ def main() -> None:
         config["data"]["uniprot_limit"] = args.train
 
     log_level = config.get("logging", {}).get("level", "INFO")
-    logging.basicConfig(level=getattr(logging, log_level))
+    logging.getLogger().setLevel(getattr(logging, log_level))
     logger = get_logger(__name__)
 
     mode = config.get("pipeline", {}).get("mode", "auto")
     use_esm = bool(config.get("features", {}).get("use_esm", False))
 
+    console.print(
+        Panel.fit(
+            "[bold cyan]Protein Function Classifier[/bold cyan]\n"
+            "[dim]Classificação hierárquica de funções biológicas via Gene Ontology[/dim]",
+            border_style="cyan",
+        )
+    )
+
     if force_train:
         n_proteins = config["data"]["uniprot_limit"]
         logger.info(
-            "Protein Classifier — modo treinamento  [%d proteínas, use_esm=%s]",
+            "Modo treinamento: %d proteínas, use_esm=%s",
             n_proteins,
             use_esm,
         )
     else:
-        logger.info(
-            "Protein Classifier — iniciando pipeline  [modo: %s, use_esm=%s]",
-            mode,
-            use_esm,
-        )
+        logger.info("Modo: %s  |  use_esm=%s", mode, use_esm)
 
     persist_path = config.get("model", {}).get("persist_path", "data/models/")
 
@@ -160,16 +208,18 @@ def main() -> None:
         _lcn_disk = _scaler_disk = _meta_disk = None
         cache_compatible = False
     else:
-        _lcn_disk, _scaler_disk, _meta_disk, cache_compatible = _resolve_model(
+        _lcn_disk, _scaler_disk, _meta_disk, cache_compatible, train_from_menu = _resolve_model(
             config, persist_path, use_esm, logger
         )
+        if train_from_menu:
+            force_train = True
 
     embedder = _build_embedder(config)
     lcn_metrics = None
     lcn_flat = None
 
     # Estado 1: tudo pronto — pula direto para previsão
-    if cache_compatible and hierarchy_exists(persist_path):
+    if not force_train and cache_compatible and hierarchy_exists(persist_path):
         logger.info("Modelo e DAG encontrados em disco — pulando para previsão")
         lcn, scaler = _lcn_disk, _scaler_disk
         hierarchy = load_hierarchy(persist_path)
@@ -198,7 +248,7 @@ def main() -> None:
         presenter.pause_if_interactive(mode, "Módulo 4-5")
 
         # Estado 2: modelo já existe, só faltava o DAG
-        if cache_compatible:
+        if not force_train and cache_compatible:
             logger.info("Modelo encontrado em disco — pulando treinamento")
             lcn, scaler = _lcn_disk, _scaler_disk
             presenter.pause_if_interactive(mode, "Módulo 6")
@@ -244,7 +294,7 @@ def main() -> None:
             presenter.pause_if_interactive(mode, "Módulo 6")
 
     # === Módulo 6: Previsão e Visualização ===
-    example_sequence = _get_sequence(config, persist_path)
+    example_sequence = _get_sequence(config)
 
     pipeline = InferencePipeline(
         classifier=lcn,

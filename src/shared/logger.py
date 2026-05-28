@@ -1,15 +1,12 @@
 import logging
 
+from rich.logging import RichHandler
+
 
 def get_logger(name: str) -> logging.Logger:
     logger = logging.getLogger(name)
     if not logger.handlers:
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter(
-            fmt="[%(asctime)s]  %(message)s",
-            datefmt="%H:%M:%S",
-        )
-        handler.setFormatter(formatter)
+        handler = RichHandler(show_time=True, show_path=False, markup=True)
         logger.addHandler(handler)
     logger.propagate = False
     return logger

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 import requests
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
 
 from src.domain.interfaces.data_source import ProteinDataSource
 from src.shared.config_loader import load_config
@@ -59,21 +60,28 @@ class UniProtClient(ProteinDataSource):
             f"&size={page_size}"
         )
 
-        while next_url and collected < limit:
-            logger.info("Requisitando UniProt (%d/%d coletadas)...", collected, limit)
-            response = requests.get(next_url, timeout=60)
-            response.raise_for_status()
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+        ) as progress:
+            task = progress.add_task("Buscando proteínas (UniProt)...", total=limit)
+            while next_url and collected < limit:
+                response = requests.get(next_url, timeout=60)
+                response.raise_for_status()
 
-            page_df = pd.read_csv(StringIO(response.text), sep="\t")
-            if page_df.empty:
-                break
+                page_df = pd.read_csv(StringIO(response.text), sep="\t")
+                if page_df.empty:
+                    break
 
-            remaining = limit - collected
-            page_df = page_df.head(remaining)
-            all_rows.append(page_df)
-            collected += len(page_df)
+                remaining = limit - collected
+                page_df = page_df.head(remaining)
+                all_rows.append(page_df)
+                collected += len(page_df)
+                progress.advance(task, len(page_df))
 
-            next_url = self._parse_next_link(response.headers.get("Link", ""))
+                next_url = self._parse_next_link(response.headers.get("Link", ""))
 
         if not all_rows:
             logger.warning("Nenhuma proteína retornada pela UniProt.")

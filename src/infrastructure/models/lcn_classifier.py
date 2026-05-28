@@ -1,4 +1,5 @@
 import pandas as pd
+from rich.progress import track
 from sklearn.ensemble import RandomForestClassifier
 
 from src.domain.entities.hierarchy_graph import HierarchyGraph
@@ -52,7 +53,7 @@ class LCNClassifier(HierarchicalClassifier):
 
         trained = 0
         skipped = 0
-        for term_id in hierarchy.get_all_node_ids():
+        for term_id in track(list(hierarchy.get_all_node_ids()), description="Treinando nós LCN..."):
             node = hierarchy.get_node(term_id)
             y_binary = [1 if term_id in pos else 0 for pos in positive_sets]
             n_positive = sum(y_binary)

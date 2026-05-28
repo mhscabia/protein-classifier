@@ -1,6 +1,14 @@
 from pathlib import Path
 
 import numpy as np
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 
 from src.shared.logger import get_logger
 
@@ -87,28 +95,32 @@ class ESMEmbedder:
         torch = self._torch
         out: list[np.ndarray] = []
         total = len(sequences)
-        for start in range(0, total, self._batch_size):
-            chunk = sequences[start : start + self._batch_size]
-            tokens = self._tokenizer(
-                chunk,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                max_length=self._max_length,
-            )
-            with torch.no_grad():
-                outputs = self._model(**tokens)
-            hidden = outputs.last_hidden_state
-            mask = tokens["attention_mask"].unsqueeze(-1).float()
-            summed = (hidden * mask).sum(dim=1)
-            counts = mask.sum(dim=1).clamp(min=1)
-            pooled = (summed / counts).cpu().numpy()
-            out.append(pooled)
-            logger.info(
-                "ESM embeddings: %d/%d",
-                min(start + self._batch_size, total),
-                total,
-            )
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+        ) as progress:
+            task = progress.add_task("Gerando embeddings ESM-2...", total=total)
+            for start in range(0, total, self._batch_size):
+                chunk = sequences[start : start + self._batch_size]
+                tokens = self._tokenizer(
+                    chunk,
+                    return_tensors="pt",
+                    padding=True,
+                    truncation=True,
+                    max_length=self._max_length,
+                )
+                with torch.no_grad():
+                    outputs = self._model(**tokens)
+                hidden = outputs.last_hidden_state
+                mask = tokens["attention_mask"].unsqueeze(-1).float()
+                summed = (hidden * mask).sum(dim=1)
+                counts = mask.sum(dim=1).clamp(min=1)
+                pooled = (summed / counts).cpu().numpy()
+                out.append(pooled)
+                progress.advance(task, len(chunk))
         return np.vstack(out).astype(np.float32)
 
     def _load_cache(self, protein_ids: list[str]) -> np.ndarray | None:
