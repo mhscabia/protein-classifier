@@ -1,3 +1,4 @@
+from collections import deque, defaultdict
 from pathlib import Path
 
 import matplotlib
@@ -11,6 +12,36 @@ from src.shared.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _bfs_hierarchical_layout(G: nx.DiGraph, x_scale: float = 2.0, y_scale: float = 1.5) -> dict:
+    """Posiciona nós em níveis BFS: raiz no topo, filhos abaixo, centrados por nível."""
+    roots = [n for n in G.nodes() if G.in_degree(n) == 0]
+    if not roots:
+        return nx.spring_layout(G, seed=42)
+
+    levels: dict[str, int] = {}
+    queue: deque = deque([(r, 0) for r in roots])
+    while queue:
+        node, depth = queue.popleft()
+        if node not in levels or levels[node] < depth:
+            levels[node] = depth
+            for child in G.successors(node):
+                queue.append((child, depth + 1))
+
+    level_nodes: dict[int, list] = defaultdict(list)
+    for node, level in levels.items():
+        level_nodes[level].append(node)
+
+    pos = {}
+    for level, nodes in sorted(level_nodes.items()):
+        n = len(nodes)
+        for i, node in enumerate(sorted(nodes)):
+            x = (i - (n - 1) / 2) * x_scale
+            y = -level * y_scale
+            pos[node] = (x, y)
+
+    return pos
+
+
 def plot_dag_predictions(
     hierarchy: HierarchyGraph,
     predicted_terms: set[str],
@@ -19,12 +50,10 @@ def plot_dag_predictions(
     """Gera subgrafo do DAG com nos preditos destacados em cor diferente."""
     G = nx.DiGraph()
 
-    # Coletar nos relevantes: preditos + ancestrais
     relevant_nodes: set[str] = set(predicted_terms)
     for term in predicted_terms:
         relevant_nodes.update(hierarchy.get_ancestors(term))
 
-    # Construir grafo com nos relevantes
     for node_id in relevant_nodes:
         node = hierarchy.get_node(node_id)
         if node is None:
@@ -39,36 +68,42 @@ def plot_dag_predictions(
         logger.warning("Nenhum no relevante para plotar no DAG")
         return
 
-    # Cores: preditos em verde, ancestrais em azul claro
-    node_colors = [
-        "#4CAF50" if n in predicted_terms else "#90CAF9"
-        for n in G.nodes()
-    ]
+    # Termos mais específicos: preditos sem descendentes também preditos no subgrafo
+    direct_terms = {
+        n for n in predicted_terms
+        if n in G and not any(s in predicted_terms for s in G.successors(n))
+    }
+
+    node_colors = ["#4CAF50" if n in direct_terms else "#90CAF9" for n in G.nodes()]
+    node_border_col = ["#2E7D32" if n in direct_terms else "#1565C0" for n in G.nodes()]
+    node_sizes = [2800 if n in direct_terms else 2200 for n in G.nodes()]
 
     fig, ax = plt.subplots(figsize=(14, 10))
 
     try:
         pos = nx.nx_agraph.graphviz_layout(G, prog="dot")
     except (ImportError, Exception):
-        pos = nx.spring_layout(G, seed=42, k=2.0)
+        pos = _bfs_hierarchical_layout(G)
 
     labels = nx.get_node_attributes(G, "label")
 
     nx.draw_networkx_nodes(
-        G, pos, node_color=node_colors, node_size=1800, alpha=0.9, ax=ax,
+        G, pos, node_color=node_colors, node_size=node_sizes,
+        alpha=0.9, ax=ax, edgecolors=node_border_col, linewidths=2,
     )
     nx.draw_networkx_edges(
-        G, pos, arrows=True, arrowsize=20, edge_color="#616161", alpha=0.7, ax=ax,
+        G, pos, arrows=True, arrowsize=25, edge_color="#444444",
+        alpha=0.8, ax=ax, width=1.5,
+        min_source_margin=15, min_target_margin=15,
     )
     nx.draw_networkx_labels(
-        G, pos, labels=labels, font_size=7, font_weight="bold", ax=ax,
+        G, pos, labels=labels, font_size=8, font_weight="bold", ax=ax,
     )
 
-    # Legenda
     from matplotlib.patches import Patch
     legend_elements = [
-        Patch(facecolor="#4CAF50", label="Termos preditos"),
-        Patch(facecolor="#90CAF9", label="Ancestrais"),
+        Patch(facecolor="#4CAF50", edgecolor="#2E7D32", linewidth=2, label="Funções previstas (específicas)"),
+        Patch(facecolor="#90CAF9", edgecolor="#1565C0", linewidth=2, label="Ancestrais (implícitos)"),
     ]
     ax.legend(handles=legend_elements, loc="upper left", fontsize=10)
     ax.set_title("Hierarquia GO — Termos Preditos", fontsize=14, fontweight="bold")
